@@ -27,13 +27,23 @@ const PlannerAuth = (() => {
       return data;
     }
     return {
-      async signup({ email, password, confirmation, name, role }) {
+      async signup({ email, password, confirmation, name, role, grade, classroom, studentNumber, clubs = "" }) {
         if (!name.trim() || name.trim().length > 40) throw new Error("이름은 1~40자로 입력해 주세요.");
         if (password.length < 8) throw new Error("비밀번호는 8자 이상 입력해 주세요.");
         if (password !== confirmation) throw new Error("비밀번호가 일치하지 않습니다.");
         if (!["student", "teacher"].includes(role)) throw new Error("가입 유형을 선택해 주세요.");
+        const student = {};
+        if (role === "student") {
+          if (![1, 2, 3].includes(Number(grade))) throw new Error("학년을 선택해 주세요.");
+          if (!Number.isInteger(Number(classroom)) || Number(classroom) < 1 || Number(classroom) > 30) throw new Error("반은 1~30 사이의 정수로 입력해 주세요.");
+          const number = String(studentNumber || "").trim();
+          if (!/^[0-9]{1,10}$/.test(number)) throw new Error("학번은 숫자 1~10자리로 입력해 주세요.");
+          const list = [...new Set(String(clubs).split(",").map(value => value.trim()).filter(Boolean))];
+          if (String(clubs).length > 200 || list.length > 10 || list.some(value => value.length > 30)) throw new Error("동아리는 이름당 30자, 최대 10개까지 입력해 주세요.");
+          Object.assign(student, { grade: Number(grade), classroom: Number(classroom), student_number: number, clubs: list });
+        }
         return request("/auth/v1/signup", { email: email.trim(), password,
-          data: { display_name: name.trim(), requested_role: role } });
+          data: { display_name: name.trim(), requested_role: role, ...student } });
       },
       async login({ email, password, role }) {
         const session = await request("/auth/v1/token?grant_type=password", { email: email.trim(), password });

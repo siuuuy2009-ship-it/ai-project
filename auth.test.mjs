@@ -5,6 +5,28 @@ const config = { url: "https://example.supabase.co", publishableKey: "sb_publish
 const values = { email: " student@example.com ", password: "test-password-123", confirmation: "test-password-123", name: "학생", role: "student" };
 const response = (data, ok = true, status = 200) => ({ ok, status, json: async () => data });
 
+test("student signup saves normalized school details and preserves student number", async () => {
+  const client = auth.createClient(config, async (_, options) => {
+    const data = JSON.parse(options.body).data;
+    assert.equal(data.grade, 2);
+    assert.equal(data.classroom, 3);
+    assert.equal(data.student_number, "0213");
+    assert.deepEqual(data.clubs, ["방송부", "과학부"]);
+    return response({});
+  });
+  await client.signup({ ...values, grade: "2", classroom: "3", studentNumber: "0213", clubs: "방송부, 과학부, 방송부, " });
+});
+
+test("student signup rejects missing or invalid school details before sending", async () => {
+  let calls = 0;
+  const client = auth.createClient(config, async () => { calls++; return response({}); });
+  const valid = { ...values, grade: 2, classroom: 3, studentNumber: "2213" };
+  for (const override of [{ grade: "" }, { classroom: 0 }, { classroom: 1.5 }, { studentNumber: "" }, { studentNumber: "abc" }, { clubs: "x".repeat(31) }]) {
+    await assert.rejects(client.signup({ ...valid, ...override }));
+  }
+  assert.equal(calls, 0);
+});
+
 test("signup validates password confirmation before making a request", async () => {
   const client = auth.createClient(config, () => { throw new Error("should not call"); });
   await assert.rejects(client.signup({ ...values, confirmation: "different" }), /일치/);

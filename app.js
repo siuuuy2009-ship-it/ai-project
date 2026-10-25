@@ -85,7 +85,7 @@ function renderSidebar() {
 }
 
 function renderTopbar() {
-  const roleName = mode === "student" ? `${state.profile.grade}학년 ${state.profile.classroom}반` : "선생님 화면";
+  const roleName = mode === "student" ? `${state.profile.grade}학년 ${state.profile.classroom}반${state.profile.studentNumber ? ` · ${escapeHtml(state.profile.studentNumber)}` : ""}` : "선생님 화면";
   return `<header class="topbar">
     <div class="topbar-left"><span>학교 플래너</span><span class="term">/ ${roleName}</span></div>
     <div class="topbar-right">
@@ -418,6 +418,7 @@ root.addEventListener("submit", async (event) => {
   if (form.id === "profile-form") {
     const next = structuredClone(state);
     next.profile = {
+      ...next.profile,
       name: String(data.get("name")).trim(), grade: Number(data.get("grade")),
       classroom: Number(data.get("classroom")),
       clubs: String(data.get("clubs")).split(",").map((club) => club.trim()).filter(Boolean),
@@ -430,8 +431,10 @@ root.addEventListener("submit", async (event) => {
 window.addEventListener("planner-login", (event) => {
   const { user, profile } = event.detail;
   accountStorageKey = `${STORAGE_KEY}:${user.id}`;
-  try { state = restoreState(JSON.parse(localStorage.getItem(accountStorageKey))); }
+  let stored;
+  try { stored = JSON.parse(localStorage.getItem(accountStorageKey)); state = restoreState(stored); }
   catch { state = createInitialState(); }
+  if (!stored) state.profile = PlannerModel.applySignupProfile(state.profile, user.user_metadata);
   state.profile.name = user.user_metadata?.display_name || profile.display_name || "학생";
   mode = profile.role === "teacher" ? "teacher" : "student";
   view = mode === "teacher" ? "teacher" : "feed";

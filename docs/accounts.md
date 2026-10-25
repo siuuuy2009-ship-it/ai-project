@@ -20,6 +20,12 @@ Supabase Authentication의 URL Configuration에서 Site URL을 실제 Vercel 서
 
 ## 현재 범위
 
+학생 가입에는 학년, 반, 학번이 필수이고 동아리는 선택입니다. 여러 동아리는 쉼표로 구분합니다.
+Supabase Auth의 user_metadata에 grade, classroom, student_number, clubs로 저장합니다.
+별도 SQL 실행은 필요하지 않습니다. 새 브라우저의 첫 로그인에서 이 정보를 플래너에 적용하며,
+이미 이 브라우저에서 수정해 저장한 프로필은 덮어쓰지 않습니다.
+이 값은 자기 신고 정보이며 DB 그룹 가입/접근 권한 판정에 사용하지 않습니다.
+
 가입과 로그인은 Supabase Auth 및 profiles 조회에 연결되어 있습니다.
 기존 공지와 일정은 계정별로 분리된 브라우저 저장 방식이며 아직 서버 공유 저장이 아닙니다.
 기존 체험 데이터는 삭제하지 않습니다. 계정별 저장 키로 이동하므로 기존 익명 체험 저장과 구분됩니다.

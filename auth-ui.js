@@ -19,6 +19,12 @@
         </fieldset>
         <p id="teacher-note" hidden>교사 계정은 관리자 승인 후 이용할 수 있습니다.</p>
         ${signup ? '<label class="auth-field">이름<input name="name" autocomplete="name" maxlength="40" required></label>' : ""}
+        ${signup ? `<fieldset id="student-fields" class="auth-student-fields"><legend>학생 정보</legend>
+          <div class="auth-school-row"><label class="auth-field">학년<select name="grade" required><option value="">선택</option>${[1, 2, 3].map(n => `<option value="${n}">${n}학년</option>`).join("")}</select></label>
+          <label class="auth-field">반<input name="classroom" type="number" min="1" max="30" step="1" required placeholder="예: 2"></label></div>
+          <label class="auth-field">학번<input name="studentNumber" type="text" inputmode="numeric" pattern="[0-9]{1,10}" maxlength="10" required placeholder="예: 2213"></label>
+          <label class="auth-field">동아리 (선택)<input name="clubs" maxlength="200" placeholder="예: 방송부, 과학부"></label>
+        </fieldset>` : ""}
         <label class="auth-field">이메일<input name="email" type="email" autocomplete="username" required placeholder="name@example.com"></label>
         <label class="auth-field" for="auth-password">비밀번호${signup ? " (8자 이상)" : ""}</label>
         <div class="auth-password"><input id="auth-password" name="password" type="password" autocomplete="${signup ? "new-password" : "current-password"}" ${signup ? 'minlength="8"' : ""} required><button type="button" data-reveal="auth-password" aria-label="비밀번호 표시" title="비밀번호 표시"><i data-lucide="eye"></i></button></div>
@@ -43,15 +49,19 @@
       lucide.createIcons();
     }
   });
-  host.addEventListener("change", () => {
-    document.getElementById("teacher-note").hidden = host.querySelector('[name="role"]:checked').value !== "teacher";
-  });
+  function syncRole() {
+    const teacher = host.querySelector('[name="role"]:checked').value === "teacher";
+    document.getElementById("teacher-note").hidden = !teacher;
+    const fields = document.getElementById("student-fields");
+    if (fields) { fields.hidden = teacher; fields.disabled = teacher; }
+  }
+  host.addEventListener("change", syncRole);
   host.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.target;
     const values = Object.fromEntries(new FormData(form));
     const message = document.getElementById("auth-message");
-    const controls = host.querySelectorAll("button, input");
+    const controls = host.querySelectorAll("button, input, select");
     controls.forEach((control) => { control.disabled = true; });
     message.textContent = "처리 중입니다.";
     try {
@@ -69,7 +79,7 @@
         window.scrollTo(0, 0);
       }
     } catch (error) { message.textContent = error.message; }
-    finally { controls.forEach((control) => { control.disabled = false; }); }
+    finally { controls.forEach((control) => { control.disabled = false; }); syncRole(); }
   });
   window.addEventListener("planner-logout", async () => {
     const previousToken = token;
