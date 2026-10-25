@@ -5,6 +5,7 @@ const {
 
 const root = document.querySelector("#app");
 let state;
+let accountStorageKey = STORAGE_KEY;
 try {
   state = restoreState(JSON.parse(localStorage.getItem(STORAGE_KEY)));
 } catch {
@@ -47,7 +48,7 @@ function dueInfo(key) {
 
 function persist(next, successMessage) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem(accountStorageKey, JSON.stringify(next));
     state = next;
     render();
     if (successMessage) showToast(successMessage);
@@ -88,10 +89,8 @@ function renderTopbar() {
   return `<header class="topbar">
     <div class="topbar-left"><span>학교 플래너</span><span class="term">/ ${roleName}</span></div>
     <div class="topbar-right">
-      <div class="mode-switch" role="group" aria-label="화면 선택">
-        <button type="button" class="${mode === "student" ? "active" : ""}" data-action="mode" data-mode="student" aria-pressed="${mode === "student"}">학생</button>
-        <button type="button" class="${mode === "teacher" ? "active" : ""}" data-action="mode" data-mode="teacher" aria-pressed="${mode === "teacher"}">선생님</button>
-      </div>
+      <span>${mode === "student" ? "학생" : "교사"}</span>
+      <button type="button" class="icon-button" data-action="logout" aria-label="로그아웃" title="로그아웃">${icon("log-out")}</button>
       <button type="button" class="icon-button" data-action="profile" aria-label="학생 정보 설정" title="학생 정보 설정">${icon("settings-2")}</button>
       <span class="avatar" aria-hidden="true">${mode === "student" ? "학" : "선"}</span>
       <span class="profile-name">${mode === "student" ? escapeHtml(state.profile.name) : "선생님"}</span>
@@ -264,7 +263,7 @@ root.addEventListener("click", (event) => {
   if (!button) return;
   const { action, id } = button.dataset;
   if (action === "nav") { view = button.dataset.view; activeDialog = null; render(); return; }
-  if (action === "mode") { mode = button.dataset.mode; view = mode === "student" ? "feed" : "teacher"; editingNoticeId = null; activeDialog = null; render(); return; }
+  if (action === "logout") { window.dispatchEvent(new Event("planner-logout")); return; }
   if (action === "filter") { filter = button.dataset.filter; render(); return; }
   if (action === "month") {
     const [year, month] = calendarMonth.split("-").map(Number);
@@ -420,4 +419,18 @@ root.addEventListener("submit", async (event) => {
   }
 });
 
-render();
+window.addEventListener("planner-login", (event) => {
+  const { user, profile } = event.detail;
+  accountStorageKey = `${STORAGE_KEY}:${user.id}`;
+  try { state = restoreState(JSON.parse(localStorage.getItem(accountStorageKey))); }
+  catch { state = createInitialState(); }
+  state.profile.name = user.user_metadata?.display_name || profile.display_name || "학생";
+  mode = profile.role === "teacher" ? "teacher" : "student";
+  view = mode === "teacher" ? "teacher" : "feed";
+  activeDialog = null;
+  editingNoticeId = null;
+  search = "";
+  filter = "all";
+  subjectFilter = "all";
+  render();
+});

@@ -1,0 +1,22 @@
+[hidden] { display: none !important; }
+.auth-page { width: min(100% - 40px, 420px); margin: 48px auto; padding-bottom: 32px; }
+.auth-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-size: 24px; font-weight: 800; margin-bottom: 36px; }
+.auth-brand svg { color: var(--teal); width: 30px; height: 30px; }
+.auth-page h1 { font-size: 24px; margin: 28px 0; }
+.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); }
+.auth-tabs button { padding: 13px; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--muted); }
+.auth-tabs button[aria-pressed="true"] { border-color: var(--teal); color: var(--teal); font-weight: 700; }
+.auth-roles { border: 0; padding: 0; margin: 0 0 24px; display: flex; gap: 32px; }
+.auth-roles legend { margin-bottom: 12px; font-weight: 700; }
+.auth-roles input { accent-color: var(--teal); }
+.auth-field { display: block; margin: 20px 0 8px; font-weight: 600; }
+.auth-field input, .auth-password input { width: 100%; height: 48px; min-width: 0; border: 1px solid #b8c6c4; background: white; border-radius: 5px; padding: 12px; }
+.auth-field input { margin-top: 8px; }
+.auth-password { position: relative; }
+.auth-password input { padding-right: 52px; }
+.auth-password button { position: absolute; right: 3px; top: 3px; height: 42px; width: 42px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; }
+.auth-password svg { width: 20px; height: 20px; }
+.auth-submit { width: 100%; min-height: 48px; border: 0; border-radius: 5px; background: var(--teal); color: white; font-weight: 700; }
+#auth-message { min-height: 24px; line-height: 1.7; color: #934122; overflow-wrap: anywhere; }
+#teacher-note { background: #fff2dc; padding: 12px; line-height: 1.6; border-left: 3px solid #b47e23; }
+@media (max-width: 480px) { .auth-page { margin-top: 28px; } }

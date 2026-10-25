@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Supabase 연결 확인</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 32px 20px; font: 16px/1.6 system-ui, sans-serif; color: #202727; background: #f7f9fa; }
+    main { max-width: 680px; margin: auto; }
+    h1 { font-size: 26px; }
+    label { display: block; margin-top: 24px; }
+    input { display: block; width: 100%; min-width: 0; margin-top: 6px; padding: 12px; border: 1px solid #abb8bd; border-radius: 4px; font: inherit; }
+    button { margin-top: 24px; padding: 12px 20px; background: #126d58; color: white; border: 0; border-radius: 4px; font: inherit; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    a { color: #126d58; }
+    #connection-result { padding: 16px 0; overflow-wrap: anywhere; }
+    .note { color: #526269; }
+  </style>
+  <script defer src="supabase-config.js"></script>
+  <script defer src="connection.js"></script>
+  <script defer src="setup.js"></script>
+</head>
+<body>
+  <main>
+    <a href="index.html">학교 플래너</a>
+    <h1>Supabase 연결 확인</h1>
+    <form id="connection-form">
+      <label for="project-url">Project URL</label>
+      <input id="project-url" type="url" required autocomplete="off" spellcheck="false">
+      <label for="public-key">Publishable key</label>
+      <input id="public-key" required autocomplete="off" spellcheck="false" placeholder="sb_publishable_...">
+      <button id="check-button" type="submit">연결 확인</button>
+    </form>
+    <p id="connection-result" role="status" aria-live="polite">연결 확인 전입니다.</p>
+    <p class="note">현재 플래너 데이터는 이 브라우저에 저장됩니다. 계정 로그인과 DB 저장은 아직 연결되지 않았습니다.</p>
+  </main>
+</body>
+</html>
