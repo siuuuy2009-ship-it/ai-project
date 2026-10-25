@@ -155,13 +155,14 @@ function renderCalendar(large = false) {
   </div>`;
 }
 
-function renderAgenda(date, showDelete = false) {
+function renderAgenda(date) {
   const events = calendarEvents().filter((event) => event.date === date);
   if (!events.length) return `<div class="empty-state" style="min-height:135px"><span>${icon("calendar-x-2")}</span><strong>일정이 없습니다</strong><p>선택한 날짜에 등록된 일정이 없습니다.</p></div>`;
   return `<div class="agenda-list">${events.map((event) => `<div class="agenda-item">
     <span class="agenda-accent ${event.kind === "personal" ? "personal" : ""}"></span>
     <div style="min-width:0;flex:1"><div class="agenda-title" style="${event.done ? "text-decoration:line-through;color:#8a9898" : ""}">${escapeHtml(event.title)}</div><div class="agenda-meta">${event.kind === "personal" ? "개인 일정" : escapeHtml(event.subject)}</div></div>
-    ${showDelete ? `<input class="check" type="checkbox" data-${event.kind === "personal" ? "complete-event" : "complete-notice"}="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)} 완료" ${event.done ? "checked" : ""}>${event.kind === "personal" ? `<button type="button" class="icon-button" data-action="delete-event" data-id="${escapeHtml(event.id)}" aria-label="일정 삭제" title="일정 삭제">${icon("trash-2")}</button>` : ""}` : ""}
+    <input class="check" type="checkbox" data-${event.kind === "personal" ? "complete-event" : "complete-notice"}="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)} 완료" ${event.done ? "checked" : ""}>
+    <button type="button" class="icon-button" data-action="${event.kind === "personal" ? "delete-event" : "remove-planner-notice"}" data-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)} ${event.kind === "personal" ? "일정 삭제" : "플래너에서 제거"}" title="${event.kind === "personal" ? "일정 삭제" : "플래너에서 제거 (원본 공지 유지)"}">${icon("trash-2")}</button>
   </div>`).join("")}</div>`;
 }
 
@@ -192,7 +193,7 @@ function renderPlanner() {
   const savedCount = calendarEvents().length;
   return `<div class="page-heading"><div><p class="eyebrow">MY PLANNER</p><h1>나의 플래너</h1></div><button type="button" class="button primary" data-action="add-event">${icon("plus")}<span class="label">일정 추가</span></button></div>
     <div class="planner-grid"><section class="pane" aria-label="월간 달력"><div class="section-heading"><h2>월간 일정</h2><span class="section-note">${savedCount}개 일정</span></div>${renderCalendar(true)}</section>
-      <aside class="planner-side"><div class="section-heading"><h2>${formatDate(selectedDate, { month: "long", day: "numeric", weekday: "long" })}</h2></div>${renderAgenda(selectedDate, true)}</aside></div>`;
+      <aside class="planner-side"><div class="section-heading"><h2>${formatDate(selectedDate, { month: "long", day: "numeric", weekday: "long" })}</h2></div>${renderAgenda(selectedDate)}</aside></div>`;
 }
 
 function renderGroupForm() {
@@ -305,6 +306,13 @@ root.addEventListener("click", (event) => {
     const next = structuredClone(state);
     next.personalEvents = next.personalEvents.filter((item) => item.id !== id);
     persist(next, "일정을 삭제했습니다.");
+    return;
+  }
+  if (action === "remove-planner-notice") {
+    const next = structuredClone(state);
+    next.savedNoticeIds = next.savedNoticeIds.filter((item) => item !== id);
+    persist(next, "플래너에서 제거했습니다. 원본 공지는 유지됩니다.");
+    return;
   }
 });
 
