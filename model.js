@@ -1,5 +1,10 @@
 const PlannerModel = (() => {
 const STORAGE_KEY = "school-planner-demo-v1";
+const CLUBS = Object.freeze(["파이", "시그마", "메트릭스", "라이프", "바이오", "캠", "별누리", "무한상상", "CC", "첼C", "블리츠", "파인애플"]);
+
+function clubCheckboxes(selected = []) {
+  return `<fieldset class="club-options"><legend>동아리 (선택)</legend>${CLUBS.map(name => `<label><input type="checkbox" name="clubs" value="${name}" ${selected.includes(name) ? "checked" : ""}> ${name}</label>`).join("")}</fieldset>`;
+}
 
 function dateKey(date = new Date()) {
   const year = date.getFullYear();
@@ -117,7 +122,7 @@ function applySignupProfile(profile, metadata = {}) {
 }
 
 return {
-  STORAGE_KEY, dateKey, offsetDate, daysUntil, matchesAudience,
+  STORAGE_KEY, CLUBS, clubCheckboxes, dateKey, offsetDate, daysUntil, matchesAudience,
   sortByDeadline, visibleNotices, createInitialState, restoreState, applySignupProfile,
 };
 })();

@@ -1,0 +1,5 @@
+student-roster.local.js
+*.pdf
+.scratch/
+.env
+.env.*
