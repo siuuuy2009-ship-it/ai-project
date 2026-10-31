@@ -112,7 +112,7 @@ function filteredNotices() {
 function renderNoticeRow(notice) {
   const due = dueInfo(notice.dueDate);
   const completed = state.completedNoticeIds.includes(notice.id);
-  const saved = state.savedNoticeIds.includes(notice.id);
+  const saved = calendarEvents().some(event => event.kind === "notice" && event.id === notice.id);
   return `<article class="notice-row ${completed ? "completed" : ""}">
     <input class="check" type="checkbox" data-complete-notice="${escapeHtml(notice.id)}" aria-label="${escapeHtml(notice.title)} 완료" ${completed ? "checked" : ""}>
     <div class="notice-main">
@@ -122,17 +122,13 @@ function renderNoticeRow(notice) {
     </div>
     <div class="notice-actions">
       <span class="deadline ${due.className}">${icon("clock-3")}${due.text}</span>
-      <button type="button" class="icon-button ${saved ? "active" : ""}" data-action="save-planner" data-id="${escapeHtml(notice.id)}" aria-label="${saved ? "플래너에서 제거" : "플래너에 추가"}" title="${saved ? "플래너에서 제거" : "플래너에 추가"}" ${!notice.dueDate ? "disabled" : ""}>${icon(saved ? "calendar-check-2" : "calendar-plus-2")}</button>
+      <button type="button" class="icon-button ${saved ? "active" : ""}" data-action="save-planner" data-id="${escapeHtml(notice.id)}" aria-label="${saved ? "플래너에서 제거" : "플래너에 추가"}" title="${saved ? "플래너에서 제거" : "플래너에 추가"}" ${!notice.dueDate && notice.type !== "assignment" ? "disabled" : ""}>${icon(saved ? "calendar-check-2" : "calendar-plus-2")}</button>
     </div>
   </article>`;
 }
 
 function calendarEvents() {
-  const saved = state.notices.filter((notice) => state.savedNoticeIds.includes(notice.id) && notice.dueDate && matchesAudience(notice, state.profile, state.groups));
-  return [
-    ...saved.map((notice) => ({ id: notice.id, title: notice.title, date: notice.dueDate, kind: "notice", subject: notice.subject, done: state.completedNoticeIds.includes(notice.id) })),
-    ...state.personalEvents.map((event) => ({ ...event, kind: "personal" })),
-  ];
+  return PlannerModel.plannerEvents(state);
 }
 
 function renderCalendar(large = false) {
@@ -163,6 +159,7 @@ function renderAgenda(date) {
     <span class="agenda-accent ${event.kind === "personal" ? "personal" : ""}"></span>
     <div style="min-width:0;flex:1"><div class="agenda-title" style="${event.done ? "text-decoration:line-through;color:#8a9898" : ""}">${escapeHtml(event.title)}</div><div class="agenda-meta">${event.kind === "personal" ? "개인 일정" : escapeHtml(event.subject)}</div></div>
     <input class="check" type="checkbox" data-${event.kind === "personal" ? "complete-event" : "complete-notice"}="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)} 완료" ${event.done ? "checked" : ""}>
+    <button type="button" class="icon-button" data-action="edit-event" data-kind="${event.kind}" data-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)} 일정 수정" title="일정 수정">${icon("pencil")}</button>
     <button type="button" class="icon-button" data-action="${event.kind === "personal" ? "delete-event" : "remove-planner-notice"}" data-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)} ${event.kind === "personal" ? "일정 삭제" : "플래너에서 제거"}" title="${event.kind === "personal" ? "일정 삭제" : "플래너에서 제거 (원본 공지 유지)"}">${icon("trash-2")}</button>
   </div>`).join("")}</div>`;
 }
@@ -249,8 +246,9 @@ function renderTeacher() {
 
 function renderDialogs() {
   const notice = state.notices.find((item) => item.id === activeDialog?.id);
-  return `<dialog id="detail-dialog" aria-labelledby="detail-title">${notice ? `<div class="dialog-inner"><div class="dialog-header"><div><div class="dialog-meta"><span class="type-tag ${notice.type}">${notice.type === "assignment" ? "과제" : "공지"}</span><span class="subject-tag">${escapeHtml(notice.subject)}</span></div><h2 id="detail-title" style="margin-top:11px">${escapeHtml(notice.title)}</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><div class="dialog-meta"><span class="audience-tag">${escapeHtml(audienceLabel(notice))}</span><span class="muted small">${notice.dueDate ? `마감 ${formatDate(notice.dueDate)}` : "마감일 없음"}</span></div><p class="dialog-body">${escapeHtml(notice.body)}</p>${notice.attachment ? `<a class="button" href="${escapeHtml(notice.attachment.dataUrl)}" download="${escapeHtml(notice.attachment.name)}">${icon("paperclip")} ${escapeHtml(notice.attachment.name)}</a>` : ""}<div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">닫기</button>${notice.dueDate && mode === "student" ? `<button type="button" class="button primary" data-action="save-planner" data-id="${escapeHtml(notice.id)}">${icon("calendar-plus-2")}${state.savedNoticeIds.includes(notice.id) ? "플래너에서 제거" : "플래너에 추가"}</button>` : ""}</div></div>` : ""}</dialog>
-    <dialog id="event-dialog" aria-labelledby="event-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="event-title">일정 추가</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><form id="event-form" class="field-grid"><div class="field full"><label for="event-name">일정 이름</label><input id="event-name" name="title" required maxlength="70" placeholder="예: 수행평가 준비"></div><div class="field full"><label for="event-date">날짜</label><input id="event-date" name="date" type="date" required value="${selectedDate}"></div><div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button class="button primary" type="submit">일정 저장</button></div></div></form></div></dialog>
+  const editingEvent = activeDialog?.type === "event" ? calendarEvents().find(item => item.id === activeDialog.id && item.kind === activeDialog.kind) : null;
+  return `<dialog id="detail-dialog" aria-labelledby="detail-title">${notice ? `<div class="dialog-inner"><div class="dialog-header"><div><div class="dialog-meta"><span class="type-tag ${notice.type}">${notice.type === "assignment" ? "과제" : "공지"}</span><span class="subject-tag">${escapeHtml(notice.subject)}</span></div><h2 id="detail-title" style="margin-top:11px">${escapeHtml(notice.title)}</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><div class="dialog-meta"><span class="audience-tag">${escapeHtml(audienceLabel(notice))}</span><span class="muted small">${notice.dueDate ? `마감 ${formatDate(notice.dueDate)}` : "마감일 없음"}</span></div><p class="dialog-body">${escapeHtml(notice.body)}</p>${notice.attachment ? `<a class="button" href="${escapeHtml(notice.attachment.dataUrl)}" download="${escapeHtml(notice.attachment.name)}">${icon("paperclip")} ${escapeHtml(notice.attachment.name)}</a>` : ""}<div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">닫기</button>${(notice.dueDate || notice.type === "assignment") && mode === "student" ? `<button type="button" class="button primary" data-action="save-planner" data-id="${escapeHtml(notice.id)}">${icon("calendar-plus-2")}${calendarEvents().some(item => item.kind === "notice" && item.id === notice.id) ? "플래너에서 제거" : "플래너에 추가"}</button>` : ""}</div></div>` : ""}</dialog>
+    <dialog id="event-dialog" aria-labelledby="event-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="event-title">${editingEvent ? "일정 수정" : "일정 추가"}</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><form id="event-form" class="field-grid"><div class="field full"><label for="event-name">일정 이름</label><input id="event-name" name="title" value="${escapeHtml(editingEvent?.title || "")}" required maxlength="80" placeholder="예: 수행평가 준비"></div><div class="field full"><label for="event-date">날짜</label><input id="event-date" name="date" type="date" required value="${escapeHtml(editingEvent?.date || selectedDate)}"></div><div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button class="button primary" type="submit">일정 저장</button></div></div></form></div></dialog>
     <dialog id="profile-dialog" aria-labelledby="profile-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="profile-title">학생 정보</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><form id="profile-form" class="field-grid"><div class="field full"><label for="profile-name">이름</label><input id="profile-name" name="name" required maxlength="20" value="${escapeHtml(state.profile.name)}"></div><div class="field"><label for="profile-grade">학년</label><select id="profile-grade" name="grade">${[1, 2, 3].map((n) => `<option value="${n}" ${state.profile.grade === n ? "selected" : ""}>${n}학년</option>`).join("")}</select></div><div class="field"><label for="profile-classroom">반</label><input id="profile-classroom" name="classroom" type="number" min="1" max="30" required value="${state.profile.classroom}"></div><div class="field full"><span class="field-label">등록된 동아리</span><p>${state.profile.clubs.length ? state.profile.clubs.map(escapeHtml).join(", ") : "소속 없음"}</p></div><div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button type="submit" class="button primary">저장</button></div></div></form></div></dialog>`;
 }
 
@@ -291,12 +289,17 @@ root.addEventListener("click", (event) => {
   if (action === "date") { selectedDate = button.dataset.date; calendarMonth = selectedDate.slice(0, 7); render(); return; }
   if (action === "detail") { activeDialog = { type: "detail", id }; render(); return; }
   if (action === "add-event") { activeDialog = { type: "event" }; render(); return; }
+  if (action === "edit-event") { activeDialog = { type: "event", id, kind: button.dataset.kind }; render(); return; }
   if (action === "profile") { activeDialog = { type: "profile" }; render(); return; }
   if (action === "close-dialog") { closeDialog(); return; }
   if (action === "save-planner") {
     const next = structuredClone(state);
-    next.savedNoticeIds = toggleInList(next.savedNoticeIds, id);
-    persist(next, next.savedNoticeIds.includes(id) ? "플래너에 추가했습니다." : "플래너에서 제거했습니다.");
+    const saved = calendarEvents().some(item => item.kind === "notice" && item.id === id);
+    next.savedNoticeIds = next.savedNoticeIds.filter(item => item !== id);
+    next.excludedNoticeIds = (next.excludedNoticeIds || []).filter(item => item !== id);
+    if (saved) next.excludedNoticeIds.push(id);
+    else next.savedNoticeIds.push(id);
+    persist(next, saved ? "플래너에서 제거했습니다." : "플래너에 추가했습니다.");
     return;
   }
   if (action === "toggle-group") { groupFormOpen = !groupFormOpen; render(); return; }
@@ -314,6 +317,8 @@ root.addEventListener("click", (event) => {
       next.notices = next.notices.filter((notice) => notice.id !== id);
       next.savedNoticeIds = next.savedNoticeIds.filter((item) => item !== id);
       next.completedNoticeIds = next.completedNoticeIds.filter((item) => item !== id);
+      next.excludedNoticeIds = (next.excludedNoticeIds || []).filter(item => item !== id);
+      next.noticePlannerOverrides = (next.noticePlannerOverrides || []).filter(item => item.id !== id);
       if (editingNoticeId === id) editingNoticeId = null;
       persist(next, "공지를 삭제했습니다.");
     }
@@ -328,6 +333,7 @@ root.addEventListener("click", (event) => {
   if (action === "remove-planner-notice") {
     const next = structuredClone(state);
     next.savedNoticeIds = next.savedNoticeIds.filter((item) => item !== id);
+    next.excludedNoticeIds = [...new Set([...(next.excludedNoticeIds || []), id])];
     persist(next, "플래너에서 제거했습니다. 원본 공지는 유지됩니다.");
     return;
   }
@@ -432,11 +438,17 @@ root.addEventListener("submit", async (event) => {
     const date = String(data.get("date"));
     if (!title || !date) return;
     const next = structuredClone(state);
-    next.personalEvents.push({ id: newId(), title, date, done: false });
+    const editing = activeDialog?.id;
+    if (editing && activeDialog.kind === "notice") {
+      next.noticePlannerOverrides = (next.noticePlannerOverrides || []).filter(item => item.id !== editing);
+      next.noticePlannerOverrides.push({ id: editing, title, date });
+    } else if (editing) {
+      next.personalEvents = next.personalEvents.map(item => item.id === editing ? { ...item, title, date } : item);
+    } else next.personalEvents.push({ id: newId(), title, date, done: false });
     selectedDate = date;
     calendarMonth = date.slice(0, 7);
     activeDialog = null;
-    persist(next, "일정을 추가했습니다.");
+    persist(next, editing ? "일정을 수정했습니다. 원본 과제는 유지됩니다." : "일정을 추가했습니다.");
     return;
   }
   if (form.id === "profile-form") {

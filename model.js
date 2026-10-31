@@ -76,6 +76,23 @@ function visibleNotices(state) {
   ));
 }
 
+function plannerEvents(state) {
+  const excluded = state.excludedNoticeIds || [];
+  const overrides = state.noticePlannerOverrides || [];
+  const notices = state.notices.filter(notice => !excluded.includes(notice.id)
+    && (notice.type === "assignment" || state.savedNoticeIds.includes(notice.id))
+    && matchesAudience(notice, state.profile, state.groups));
+  return [
+    ...notices.map(notice => {
+      const override = overrides.find(item => item.id === notice.id);
+      return { id: notice.id, title: override?.title || notice.title,
+        date: override?.date || notice.dueDate || dateKey(new Date(notice.createdAt)),
+        kind: "notice", subject: notice.subject, done: state.completedNoticeIds.includes(notice.id) };
+    }),
+    ...state.personalEvents.map(event => ({ ...event, kind: "personal" })),
+  ];
+}
+
 function createInitialState(now = new Date()) {
   const createdAt = now.toISOString();
   return {
@@ -111,6 +128,8 @@ function createInitialState(now = new Date()) {
     savedNoticeIds: ["sample-1", "sample-4"],
     completedNoticeIds: [],
     personalEvents: [],
+    excludedNoticeIds: [],
+    noticePlannerOverrides: [],
   };
 }
 
@@ -126,6 +145,8 @@ function restoreState(raw) {
     savedNoticeIds: Array.isArray(raw.savedNoticeIds) ? raw.savedNoticeIds : [],
     completedNoticeIds: Array.isArray(raw.completedNoticeIds) ? raw.completedNoticeIds : [],
     personalEvents: Array.isArray(raw.personalEvents) ? raw.personalEvents : [],
+    excludedNoticeIds: Array.isArray(raw.excludedNoticeIds) ? raw.excludedNoticeIds : [],
+    noticePlannerOverrides: Array.isArray(raw.noticePlannerOverrides) ? raw.noticePlannerOverrides : [],
   };
 }
 
@@ -140,7 +161,7 @@ function applySignupProfile(profile, metadata = {}) {
 
 return {
   STORAGE_KEY, CLUBS, clubCheckboxes, dateKey, offsetDate, daysUntil, matchesAudience, audienceIds, schoolGroups, mergeSchoolGroups,
-  sortByDeadline, visibleNotices, createInitialState, restoreState, applySignupProfile,
+  sortByDeadline, visibleNotices, createInitialState, restoreState, applySignupProfile, plannerEvents,
 };
 })();
 
