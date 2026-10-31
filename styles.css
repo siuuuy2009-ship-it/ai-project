@@ -18,6 +18,16 @@
 }
 
 * { box-sizing: border-box; }
+.audience-scope { border: 0; padding: 0; margin: 0 0 16px; display: flex; flex-wrap: wrap; gap: 16px; }
+.audience-scope legend, .audience-groups > legend { font-weight: 700; margin-bottom: 10px; }
+.audience-groups { border: 1px solid var(--line); padding: 16px; border-radius: 5px; min-width: 0; }
+.audience-groups:disabled { opacity: .5; }
+.audience-section { border: 0; margin: 0 0 16px; padding: 0; min-width: 0; }
+.audience-section:last-child { margin-bottom: 0; }
+.audience-section legend { color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+.audience-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px 16px; }
+.audience-options label, .audience-scope label { display: flex; align-items: center; gap: 8px; min-height: 32px; overflow-wrap: anywhere; }
+.audience-options input, .audience-scope input { accent-color: var(--teal); width: 17px; height: 17px; flex: none; }
 body { margin: 0; min-width: 320px; }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
@@ -155,7 +165,7 @@ h3 { margin: 0; font-size: 14px; }
 .field textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
 .field-help { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .form-actions { display: flex; align-items: center; justify-content: end; gap: 8px; margin-top: 19px; }
-.group-list { display: grid; border-top: 1px solid var(--line); margin: 20px 0 22px; }
+.group-list { display: grid; max-height: 420px; overflow-y: auto; border-top: 1px solid var(--line); margin: 20px 0 22px; }
 .group-row { display: flex; align-items: center; gap: 9px; border-bottom: 1px solid var(--line); min-height: 45px; }
 .group-row svg { color: #7c9291; width: 15px; height: 15px; }
 .group-row span { flex: 1; font-size: 12px; font-weight: 700; }

@@ -29,15 +29,36 @@ function daysUntil(key, from = new Date()) {
 }
 
 function matchesAudience(notice, profile, groups) {
-  if (notice.groupId === "all") return true;
-  const group = groups.find((item) => item.id === notice.groupId);
-  if (!group) return false;
-  if (group.kind === "class") {
-    return Number(profile.grade) === Number(group.grade)
-      && Number(profile.classroom) === Number(group.classroom);
+  const ids = audienceIds(notice);
+  if (ids.includes("all")) return true;
+  return groups.some(group => ids.includes(group.id) && (group.kind === "class"
+    ? Number(profile.grade) === Number(group.grade) && Number(profile.classroom) === Number(group.classroom)
+    : group.kind === "club" && profile.clubs.includes(group.clubName)));
+}
+
+function audienceIds(notice) {
+  return Array.isArray(notice.groupIds) ? [...new Set(notice.groupIds)] : notice.groupId ? [notice.groupId] : [];
+}
+
+function schoolGroups() {
+  return [
+    ...[1, 2, 3].flatMap(grade => [1, 2, 3, 4, 5, 6].map(classroom => ({
+      id: `class-${grade}-${classroom}`, kind: "class", name: `${grade}학년 ${classroom}반`, grade, classroom, builtIn: true,
+    }))),
+    ...CLUBS.map((clubName, index) => ({ id: `school-club-${index + 1}`, kind: "club", name: clubName, clubName, builtIn: true })),
+  ];
+}
+
+function mergeSchoolGroups(groups) {
+  const result = groups.map(group => ({ ...group }));
+  for (const standard of schoolGroups()) {
+    const existing = result.find(group => group.id === standard.id || (group.kind === standard.kind && (group.kind === "class"
+      ? Number(group.grade) === standard.grade && Number(group.classroom) === standard.classroom
+      : group.clubName === standard.clubName)));
+    if (existing) existing.builtIn = true;
+    else result.push(standard);
   }
-  if (group.kind === "club") return profile.clubs.includes(group.clubName);
-  return false;
+  return result;
 }
 
 function sortByDeadline(notices) {
@@ -58,12 +79,8 @@ function visibleNotices(state) {
 function createInitialState(now = new Date()) {
   const createdAt = now.toISOString();
   return {
-    profile: { name: "학생", grade: 2, classroom: 3, clubs: ["방송부"] },
-    groups: [
-      { id: "class-2-3", kind: "class", name: "2학년 3반", grade: 2, classroom: 3 },
-      { id: "class-2-4", kind: "class", name: "2학년 4반", grade: 2, classroom: 4 },
-      { id: "club-broadcast", kind: "club", name: "방송부", clubName: "방송부" },
-    ],
+    profile: { name: "학생", grade: 2, classroom: 3, clubs: ["파이"] },
+    groups: schoolGroups(),
     notices: [
       {
         id: "sample-1", type: "assignment", subject: "국어", title: "독서 기록장 제출",
@@ -81,9 +98,9 @@ function createInitialState(now = new Date()) {
         dueDate: offsetDate(7, now), groupId: "all", createdAt, attachment: null,
       },
       {
-        id: "sample-4", type: "assignment", subject: "동아리", title: "방송부 회의 안건 정리",
+        id: "sample-4", type: "assignment", subject: "동아리", title: "파이 회의 안건 정리",
         body: "다음 회의에서 논의할 안건을 각자 한 가지씩 준비해 주세요.",
-        dueDate: offsetDate(3, now), groupId: "club-broadcast", createdAt, attachment: null,
+        dueDate: offsetDate(3, now), groupId: "school-club-1", createdAt, attachment: null,
       },
       {
         id: "sample-5", type: "notice", subject: "과학", title: "2학년 4반 실험실 이용 안내",
@@ -104,7 +121,7 @@ function restoreState(raw) {
   const fresh = createInitialState();
   return {
     profile: { ...fresh.profile, ...raw.profile, clubs: raw.profile?.clubs || [] },
-    groups: raw.groups,
+    groups: mergeSchoolGroups(raw.groups),
     notices: raw.notices,
     savedNoticeIds: Array.isArray(raw.savedNoticeIds) ? raw.savedNoticeIds : [],
     completedNoticeIds: Array.isArray(raw.completedNoticeIds) ? raw.completedNoticeIds : [],
@@ -122,7 +139,7 @@ function applySignupProfile(profile, metadata = {}) {
 }
 
 return {
-  STORAGE_KEY, CLUBS, clubCheckboxes, dateKey, offsetDate, daysUntil, matchesAudience,
+  STORAGE_KEY, CLUBS, clubCheckboxes, dateKey, offsetDate, daysUntil, matchesAudience, audienceIds, schoolGroups, mergeSchoolGroups,
   sortByDeadline, visibleNotices, createInitialState, restoreState, applySignupProfile,
 };
 })();

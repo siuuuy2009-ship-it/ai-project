@@ -30,6 +30,7 @@ const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => (
 })[char]);
 const newId = () => globalThis.crypto?.randomUUID?.() || `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const groupLabel = (id) => id === "all" ? "전체 학생" : (state.groups.find((group) => group.id === id)?.name || "삭제된 그룹");
+const audienceLabel = notice => PlannerModel.audienceIds(notice).map(groupLabel).join(", ");
 
 function formatDate(key, options = { month: "short", day: "numeric", weekday: "short" }) {
   if (!key) return "마감일 없음";
@@ -117,7 +118,7 @@ function renderNoticeRow(notice) {
     <div class="notice-main">
       <button type="button" class="notice-title" data-action="detail" data-id="${escapeHtml(notice.id)}">${escapeHtml(notice.title)}</button>
       <p class="notice-body-preview">${escapeHtml(notice.body)}</p>
-      <div class="notice-meta"><span class="type-tag ${notice.type}">${notice.type === "assignment" ? "과제" : "공지"}</span><span class="subject-tag">${escapeHtml(notice.subject)}</span><span>${escapeHtml(groupLabel(notice.groupId))}</span></div>
+      <div class="notice-meta"><span class="type-tag ${notice.type}">${notice.type === "assignment" ? "과제" : "공지"}</span><span class="subject-tag">${escapeHtml(notice.subject)}</span><span>${escapeHtml(audienceLabel(notice))}</span></div>
     </div>
     <div class="notice-actions">
       <span class="deadline ${due.className}">${icon("clock-3")}${due.text}</span>
@@ -205,13 +206,28 @@ function renderGroupForm() {
     <div class="form-actions"><button type="button" class="button" data-action="toggle-group">취소</button><button class="button primary" type="submit">그룹 저장</button></div></form>`;
 }
 
+function renderAudiencePicker(notice) {
+  const selected = notice ? PlannerModel.audienceIds(notice) : ["all"];
+  const all = selected.includes("all");
+  const sections = [
+    ...[1, 2, 3].map(grade => [`${grade}학년`, state.groups.filter(group => group.kind === "class" && Number(group.grade) === grade)]),
+    ["동아리", state.groups.filter(group => group.kind === "club")],
+  ];
+  return `<fieldset class="audience-scope"><legend>대상</legend>
+    <label><input type="radio" name="audienceScope" value="all" ${all ? "checked" : ""}> 전체 학생</label>
+    <label><input type="radio" name="audienceScope" value="groups" ${!all ? "checked" : ""}> 반·동아리 선택</label>
+  </fieldset><fieldset id="audience-groups" class="audience-groups" ${all ? "disabled" : ""}><legend>반·동아리</legend>
+    ${sections.map(([label, groups]) => `<fieldset class="audience-section"><legend>${label}</legend><div class="audience-options">${groups.map(group => `<label><input type="checkbox" name="groupIds" value="${escapeHtml(group.id)}" ${selected.includes(group.id) ? "checked" : ""}> ${escapeHtml(group.name)}</label>`).join("")}</div></fieldset>`).join("")}
+  </fieldset>`;
+}
+
 function renderTeacher() {
   const editing = state.notices.find((notice) => notice.id === editingNoticeId);
   const notices = [...state.notices].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return `<div class="page-heading"><div><p class="eyebrow">TEACHER WORKSPACE</p><h1>공지 관리</h1></div><span class="badge">체험 모드</span></div>
     <div class="teacher-layout">
       <section class="teacher-left" aria-label="그룹 관리"><div class="section-heading"><h2>대상 그룹</h2><span class="section-note">${state.groups.length}개</span></div>
-        <div class="group-list">${state.groups.map((group) => `<div class="group-row">${icon(group.kind === "class" ? "users-round" : "shapes")}<span>${escapeHtml(group.name)}</span><small>${group.kind === "class" ? "학급" : "동아리"}</small><button type="button" class="icon-button" data-action="delete-group" data-id="${escapeHtml(group.id)}" aria-label="${escapeHtml(group.name)} 삭제" title="그룹 삭제">${icon("trash-2")}</button></div>`).join("")}</div>
+        <div class="group-list">${state.groups.map((group) => `<div class="group-row">${icon(group.kind === "class" ? "users-round" : "shapes")}<span>${escapeHtml(group.name)}</span><small>${group.kind === "class" ? "학급" : "동아리"}</small><button type="button" class="icon-button" ${group.builtIn ? "disabled" : ""} data-action="delete-group" data-id="${escapeHtml(group.id)}" aria-label="${escapeHtml(group.name)} 삭제" title="그룹 삭제">${icon("trash-2")}</button></div>`).join("")}</div>
         ${renderGroupForm()}
       </section>
       <section class="pane" aria-label="공지 작성"><div class="section-heading"><h2>${editing ? "공지 수정" : "공지·과제 작성"}</h2></div>
@@ -220,20 +236,20 @@ function renderTeacher() {
           <div class="field"><label for="notice-type">종류</label><select id="notice-type" name="type"><option value="notice" ${editing?.type === "notice" ? "selected" : ""}>공지</option><option value="assignment" ${editing?.type === "assignment" ? "selected" : ""}>과제</option></select></div>
           <div class="field"><label for="notice-subject">과목·분류</label><input id="notice-subject" name="subject" required maxlength="25" placeholder="예: 국어, 학교" value="${escapeHtml(editing?.subject || "")}"></div>
           <div class="field full"><label for="notice-body">내용</label><textarea id="notice-body" name="body" required maxlength="3000" placeholder="전달할 내용을 입력하세요">${escapeHtml(editing?.body || "")}</textarea></div>
-          <div class="field"><label for="notice-group">대상</label><select id="notice-group" name="groupId"><option value="all" ${!editing || editing.groupId === "all" ? "selected" : ""}>전체 학생</option>${state.groups.map((group) => `<option value="${escapeHtml(group.id)}" ${editing?.groupId === group.id ? "selected" : ""}>${escapeHtml(group.name)}</option>`).join("")}</select></div>
+          <div class="field full">${renderAudiencePicker(editing)}</div>
           <div class="field"><label for="notice-due">마감일</label><input id="notice-due" name="dueDate" type="date" value="${escapeHtml(editing?.dueDate || "")}"></div>
           <div class="field full"><label for="notice-file">첨부파일</label><input id="notice-file" name="attachment" type="file" accept=".pdf,.hwp,.hwpx,.png,.jpg,.jpeg"><span class="field-help">${editing?.attachment ? `현재 파일: ${escapeHtml(editing.attachment.name)} · ` : ""}1MB 이하 파일은 이 브라우저에 저장됩니다.</span></div>
         </div><div class="form-actions">${editing ? `<button type="button" class="button" data-action="cancel-edit">수정 취소</button>` : ""}<button type="submit" class="button primary">${icon(editing ? "save" : "send")} ${editing ? "변경 저장" : "공지 등록"}</button></div></form>
       </section>
     </div>
     <section class="teacher-recent" aria-label="최근 등록한 공지"><div class="section-heading"><h2>최근 등록한 공지·과제</h2><span class="section-note">${notices.length}개</span></div>
-      <div style="overflow-x:auto"><table class="teacher-table"><thead><tr><th>제목</th><th>대상</th><th>마감일</th><th>관리</th></tr></thead><tbody>${notices.map((notice) => `<tr><td><button type="button" class="notice-title row-title" data-action="detail" data-id="${escapeHtml(notice.id)}">${escapeHtml(notice.title)}</button><div class="notice-meta"><span class="type-tag ${notice.type}">${notice.type === "assignment" ? "과제" : "공지"}</span><span>${escapeHtml(notice.subject)}</span></div></td><td>${escapeHtml(groupLabel(notice.groupId))}</td><td>${notice.dueDate ? formatDate(notice.dueDate) : "-"}</td><td><div class="table-actions"><button type="button" class="icon-button" data-action="edit-notice" data-id="${escapeHtml(notice.id)}" aria-label="수정" title="수정">${icon("pencil")}</button><button type="button" class="icon-button" data-action="delete-notice" data-id="${escapeHtml(notice.id)}" aria-label="삭제" title="삭제">${icon("trash-2")}</button></div></td></tr>`).join("")}</tbody></table></div>
+      <div style="overflow-x:auto"><table class="teacher-table"><thead><tr><th>제목</th><th>대상</th><th>마감일</th><th>관리</th></tr></thead><tbody>${notices.map((notice) => `<tr><td><button type="button" class="notice-title row-title" data-action="detail" data-id="${escapeHtml(notice.id)}">${escapeHtml(notice.title)}</button><div class="notice-meta"><span class="type-tag ${notice.type}">${notice.type === "assignment" ? "과제" : "공지"}</span><span>${escapeHtml(notice.subject)}</span></div></td><td>${escapeHtml(audienceLabel(notice))}</td><td>${notice.dueDate ? formatDate(notice.dueDate) : "-"}</td><td><div class="table-actions"><button type="button" class="icon-button" data-action="edit-notice" data-id="${escapeHtml(notice.id)}" aria-label="수정" title="수정">${icon("pencil")}</button><button type="button" class="icon-button" data-action="delete-notice" data-id="${escapeHtml(notice.id)}" aria-label="삭제" title="삭제">${icon("trash-2")}</button></div></td></tr>`).join("")}</tbody></table></div>
     </section>`;
 }
 
 function renderDialogs() {
   const notice = state.notices.find((item) => item.id === activeDialog?.id);
-  return `<dialog id="detail-dialog" aria-labelledby="detail-title">${notice ? `<div class="dialog-inner"><div class="dialog-header"><div><div class="dialog-meta"><span class="type-tag ${notice.type}">${notice.type === "assignment" ? "과제" : "공지"}</span><span class="subject-tag">${escapeHtml(notice.subject)}</span></div><h2 id="detail-title" style="margin-top:11px">${escapeHtml(notice.title)}</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><div class="dialog-meta"><span class="audience-tag">${escapeHtml(groupLabel(notice.groupId))}</span><span class="muted small">${notice.dueDate ? `마감 ${formatDate(notice.dueDate)}` : "마감일 없음"}</span></div><p class="dialog-body">${escapeHtml(notice.body)}</p>${notice.attachment ? `<a class="button" href="${escapeHtml(notice.attachment.dataUrl)}" download="${escapeHtml(notice.attachment.name)}">${icon("paperclip")} ${escapeHtml(notice.attachment.name)}</a>` : ""}<div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">닫기</button>${notice.dueDate && mode === "student" ? `<button type="button" class="button primary" data-action="save-planner" data-id="${escapeHtml(notice.id)}">${icon("calendar-plus-2")}${state.savedNoticeIds.includes(notice.id) ? "플래너에서 제거" : "플래너에 추가"}</button>` : ""}</div></div>` : ""}</dialog>
+  return `<dialog id="detail-dialog" aria-labelledby="detail-title">${notice ? `<div class="dialog-inner"><div class="dialog-header"><div><div class="dialog-meta"><span class="type-tag ${notice.type}">${notice.type === "assignment" ? "과제" : "공지"}</span><span class="subject-tag">${escapeHtml(notice.subject)}</span></div><h2 id="detail-title" style="margin-top:11px">${escapeHtml(notice.title)}</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><div class="dialog-meta"><span class="audience-tag">${escapeHtml(audienceLabel(notice))}</span><span class="muted small">${notice.dueDate ? `마감 ${formatDate(notice.dueDate)}` : "마감일 없음"}</span></div><p class="dialog-body">${escapeHtml(notice.body)}</p>${notice.attachment ? `<a class="button" href="${escapeHtml(notice.attachment.dataUrl)}" download="${escapeHtml(notice.attachment.name)}">${icon("paperclip")} ${escapeHtml(notice.attachment.name)}</a>` : ""}<div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">닫기</button>${notice.dueDate && mode === "student" ? `<button type="button" class="button primary" data-action="save-planner" data-id="${escapeHtml(notice.id)}">${icon("calendar-plus-2")}${state.savedNoticeIds.includes(notice.id) ? "플래너에서 제거" : "플래너에 추가"}</button>` : ""}</div></div>` : ""}</dialog>
     <dialog id="event-dialog" aria-labelledby="event-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="event-title">일정 추가</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><form id="event-form" class="field-grid"><div class="field full"><label for="event-name">일정 이름</label><input id="event-name" name="title" required maxlength="70" placeholder="예: 수행평가 준비"></div><div class="field full"><label for="event-date">날짜</label><input id="event-date" name="date" type="date" required value="${selectedDate}"></div><div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button class="button primary" type="submit">일정 저장</button></div></div></form></div></dialog>
     <dialog id="profile-dialog" aria-labelledby="profile-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="profile-title">학생 정보</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><form id="profile-form" class="field-grid"><div class="field full"><label for="profile-name">이름</label><input id="profile-name" name="name" required maxlength="20" value="${escapeHtml(state.profile.name)}"></div><div class="field"><label for="profile-grade">학년</label><select id="profile-grade" name="grade">${[1, 2, 3].map((n) => `<option value="${n}" ${state.profile.grade === n ? "selected" : ""}>${n}학년</option>`).join("")}</select></div><div class="field"><label for="profile-classroom">반</label><input id="profile-classroom" name="classroom" type="number" min="1" max="30" required value="${state.profile.classroom}"></div><div class="field full"><span class="field-label">등록된 동아리</span><p>${state.profile.clubs.length ? state.profile.clubs.map(escapeHtml).join(", ") : "소속 없음"}</p></div><div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button type="submit" class="button primary">저장</button></div></div></form></div></dialog>`;
 }
@@ -285,7 +301,8 @@ root.addEventListener("click", (event) => {
   }
   if (action === "toggle-group") { groupFormOpen = !groupFormOpen; render(); return; }
   if (action === "delete-group") {
-    if (state.notices.some((notice) => notice.groupId === id)) { showToast("이 그룹을 대상으로 한 공지를 먼저 수정해 주세요."); return; }
+    if (state.groups.find(group => group.id === id)?.builtIn) { showToast("학교 기본 대상은 삭제할 수 없습니다."); return; }
+    if (state.notices.some((notice) => PlannerModel.audienceIds(notice).includes(id))) { showToast("이 그룹을 대상으로 한 공지를 먼저 수정해 주세요."); return; }
     if (confirm("이 그룹을 삭제할까요?")) { const next = structuredClone(state); next.groups = next.groups.filter((group) => group.id !== id); persist(next, "그룹을 삭제했습니다."); }
     return;
   }
@@ -328,6 +345,10 @@ root.addEventListener("input", (event) => {
 
 root.addEventListener("change", (event) => {
   const target = event.target;
+  if (target.name === "audienceScope") {
+    root.querySelector("#audience-groups").disabled = target.value === "all";
+    return;
+  }
   if (target.matches("[data-subject-filter]")) { subjectFilter = target.value; render(); return; }
   if (target.matches("[data-complete-notice]")) {
     const next = structuredClone(state);
@@ -383,6 +404,9 @@ root.addEventListener("submit", async (event) => {
     const body = String(data.get("body")).trim();
     const subject = String(data.get("subject")).trim();
     if (!title || !body || !subject) { showToast("제목, 내용, 과목을 입력해 주세요."); return; }
+    const groupIds = data.get("audienceScope") === "all" ? ["all"]
+      : [...new Set(data.getAll("groupIds"))].filter(id => state.groups.some(group => group.id === id));
+    if (!groupIds.length) { showToast("대상 반이나 동아리를 한 개 이상 선택해 주세요."); return; }
     const file = data.get("attachment");
     if (file?.size > 1024 * 1024) { showToast("첨부파일은 1MB 이하로 선택해 주세요."); return; }
     const next = structuredClone(state);
@@ -394,7 +418,7 @@ root.addEventListener("submit", async (event) => {
     }
     const notice = {
       id: original?.id || newId(), type: String(data.get("type")), subject, title, body,
-      dueDate: String(data.get("dueDate")), groupId: String(data.get("groupId")),
+      dueDate: String(data.get("dueDate")), groupIds,
       createdAt: original?.createdAt || new Date().toISOString(), attachment,
     };
     if (original) next.notices = next.notices.map((item) => item.id === original.id ? notice : item);
