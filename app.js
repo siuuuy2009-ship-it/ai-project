@@ -235,7 +235,7 @@ function renderDialogs() {
   const notice = state.notices.find((item) => item.id === activeDialog?.id);
   return `<dialog id="detail-dialog" aria-labelledby="detail-title">${notice ? `<div class="dialog-inner"><div class="dialog-header"><div><div class="dialog-meta"><span class="type-tag ${notice.type}">${notice.type === "assignment" ? "과제" : "공지"}</span><span class="subject-tag">${escapeHtml(notice.subject)}</span></div><h2 id="detail-title" style="margin-top:11px">${escapeHtml(notice.title)}</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><div class="dialog-meta"><span class="audience-tag">${escapeHtml(groupLabel(notice.groupId))}</span><span class="muted small">${notice.dueDate ? `마감 ${formatDate(notice.dueDate)}` : "마감일 없음"}</span></div><p class="dialog-body">${escapeHtml(notice.body)}</p>${notice.attachment ? `<a class="button" href="${escapeHtml(notice.attachment.dataUrl)}" download="${escapeHtml(notice.attachment.name)}">${icon("paperclip")} ${escapeHtml(notice.attachment.name)}</a>` : ""}<div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">닫기</button>${notice.dueDate && mode === "student" ? `<button type="button" class="button primary" data-action="save-planner" data-id="${escapeHtml(notice.id)}">${icon("calendar-plus-2")}${state.savedNoticeIds.includes(notice.id) ? "플래너에서 제거" : "플래너에 추가"}</button>` : ""}</div></div>` : ""}</dialog>
     <dialog id="event-dialog" aria-labelledby="event-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="event-title">일정 추가</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><form id="event-form" class="field-grid"><div class="field full"><label for="event-name">일정 이름</label><input id="event-name" name="title" required maxlength="70" placeholder="예: 수행평가 준비"></div><div class="field full"><label for="event-date">날짜</label><input id="event-date" name="date" type="date" required value="${selectedDate}"></div><div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button class="button primary" type="submit">일정 저장</button></div></div></form></div></dialog>
-    <dialog id="profile-dialog" aria-labelledby="profile-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="profile-title">학생 정보</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><form id="profile-form" class="field-grid"><div class="field full"><label for="profile-name">이름</label><input id="profile-name" name="name" required maxlength="20" value="${escapeHtml(state.profile.name)}"></div><div class="field"><label for="profile-grade">학년</label><select id="profile-grade" name="grade">${[1, 2, 3].map((n) => `<option value="${n}" ${state.profile.grade === n ? "selected" : ""}>${n}학년</option>`).join("")}</select></div><div class="field"><label for="profile-classroom">반</label><input id="profile-classroom" name="classroom" type="number" min="1" max="30" required value="${state.profile.classroom}"></div><div class="field full">${PlannerModel.clubCheckboxes(state.profile.clubs)}</div><div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button type="submit" class="button primary">저장</button></div></div></form></div></dialog>`;
+    <dialog id="profile-dialog" aria-labelledby="profile-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="profile-title">학생 정보</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><form id="profile-form" class="field-grid"><div class="field full"><label for="profile-name">이름</label><input id="profile-name" name="name" required maxlength="20" value="${escapeHtml(state.profile.name)}"></div><div class="field"><label for="profile-grade">학년</label><select id="profile-grade" name="grade">${[1, 2, 3].map((n) => `<option value="${n}" ${state.profile.grade === n ? "selected" : ""}>${n}학년</option>`).join("")}</select></div><div class="field"><label for="profile-classroom">반</label><input id="profile-classroom" name="classroom" type="number" min="1" max="30" required value="${state.profile.classroom}"></div><div class="field full"><span class="field-label">등록된 동아리</span><p>${state.profile.clubs.length ? state.profile.clubs.map(escapeHtml).join(", ") : "소속 없음"}</p></div><div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button type="submit" class="button primary">저장</button></div></div></form></div></dialog>`;
 }
 
 function render() {
@@ -421,7 +421,6 @@ root.addEventListener("submit", async (event) => {
       ...next.profile,
       name: String(data.get("name")).trim(), grade: Number(data.get("grade")),
       classroom: Number(data.get("classroom")),
-      clubs: data.getAll("clubs").filter(club => PlannerModel.CLUBS.includes(club)),
     };
     activeDialog = null;
     persist(next, "학생 정보를 저장했습니다.");
@@ -429,17 +428,13 @@ root.addEventListener("submit", async (event) => {
 });
 
 window.addEventListener("planner-login", (event) => {
-  const { user, profile, loginClub } = event.detail;
+  const { user, profile } = event.detail;
   accountStorageKey = `${STORAGE_KEY}:${user.id}`;
   let stored;
   try { stored = JSON.parse(localStorage.getItem(accountStorageKey)); state = restoreState(stored); }
   catch { state = createInitialState(); }
   if (!stored) state.profile = PlannerModel.applySignupProfile(state.profile, user.user_metadata);
-  if (profile.role === "student" && (loginClub === "none" || PlannerModel.CLUBS.includes(loginClub))) {
-    state.profile.clubs = loginClub === "none" ? [] : [loginClub];
-    try { localStorage.setItem(accountStorageKey, JSON.stringify(state)); }
-    catch { showToast("선택한 동아리를 브라우저에 저장하지 못했습니다."); }
-  }
+  state.profile.clubs = PlannerModel.applySignupProfile({ clubs: [] }, user.user_metadata).clubs;
   state.profile.name = user.user_metadata?.display_name || profile.display_name || "학생";
   mode = profile.role === "teacher" ? "teacher" : "student";
   view = mode === "teacher" ? "teacher" : "feed";

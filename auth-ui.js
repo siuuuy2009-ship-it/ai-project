@@ -31,7 +31,6 @@
         <label class="auth-field" for="auth-password">비밀번호${signup ? " (8자 이상)" : ""}</label>
         <div class="auth-password"><input id="auth-password" name="password" type="password" autocomplete="${signup ? "new-password" : "current-password"}" ${signup ? 'minlength="8"' : ""} required><button type="button" data-reveal="auth-password" aria-label="비밀번호 표시" title="비밀번호 표시"><i data-lucide="eye"></i></button></div>
         ${signup ? '<label class="auth-field" for="auth-confirm">비밀번호 확인</label><div class="auth-password"><input id="auth-confirm" name="confirmation" type="password" autocomplete="new-password" minlength="8" required><button type="button" data-reveal="auth-confirm" aria-label="비밀번호 확인 표시" title="비밀번호 확인 표시"><i data-lucide="eye"></i></button></div>' : ""}
-        ${!signup ? `<label class="auth-field" id="login-club-field">동아리<select name="loginClub"><option value="">기존 동아리 유지</option><option value="none">소속 없음</option>${PlannerModel.CLUBS.map(name => `<option value="${name}">${name}</option>`).join("")}</select></label>` : ""}
         <p id="auth-message" role="status" aria-live="polite"></p>
         <button class="auth-submit" type="submit">${signup ? "회원가입" : "로그인"}</button>
       </form>
@@ -58,8 +57,6 @@
     document.getElementById("teacher-note").hidden = !teacher;
     const fields = document.getElementById("student-fields");
     if (fields) { fields.hidden = teacher; fields.disabled = teacher; }
-    const loginClub = document.getElementById("login-club-field");
-    if (loginClub) { loginClub.hidden = teacher; loginClub.querySelector("select").disabled = teacher; }
     const teacherName = document.getElementById("teacher-name");
     if (teacherName) { teacherName.hidden = !teacher; teacherName.querySelector("input").disabled = !teacher; }
     const grade = host.querySelector('[name="grade"]');
@@ -100,7 +97,7 @@
       } else {
         const session = await client.login(values);
         token = session.accessToken;
-        window.dispatchEvent(new CustomEvent("planner-login", { detail: { user: session.user, profile: session.profile, loginClub: values.loginClub } }));
+        window.dispatchEvent(new CustomEvent("planner-login", { detail: { user: session.user, profile: session.profile } }));
         host.hidden = true;
         app.hidden = false;
         form.reset();

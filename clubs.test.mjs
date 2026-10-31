@@ -14,7 +14,7 @@ test("public auth page renders login and signup without local roster scripts", (
     document: { getElementById: () => host }, window: { addEventListener() {} },
   });
   vm.runInContext(readFileSync(new URL("./auth-ui.js", import.meta.url), "utf8"), context);
-  assert.match(host.innerHTML, /기존 동아리 유지/);
+  assert.doesNotMatch(host.innerHTML, /name="loginClub"|name="clubs"/);
   handlers.click({ target: { closest: selector => selector === "[data-tab]" ? { dataset: { tab: "signup" } } : null } });
   assert.match(host.innerHTML, /name="name"/);
   assert.match(host.innerHTML, /name="studentNumber" type="text"/);
@@ -27,6 +27,32 @@ test("school club choices contain exactly the supplied twelve names", () => {
   assert.equal((html.match(/type="checkbox"/g) || []).length, 12);
   assert.equal((html.match(/ checked/g) || []).length, 2);
   assert.match(html, /value="CC" checked/);
+});
+
+test("login restores signup clubs and profile editing cannot replace them", async () => {
+  const rootHandlers = {};
+  const windowHandlers = {};
+  const root = { innerHTML: "", addEventListener: (name, fn) => { rootHandlers[name] = fn; } };
+  const saved = model.createInitialState();
+  saved.profile.clubs = ["블리츠"];
+  const storage = new Map([[`${model.STORAGE_KEY}:test-user`, JSON.stringify(saved)]]);
+  const context = vm.createContext({
+    PlannerModel: model, structuredClone,
+    localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) },
+    document: { querySelector: () => root },
+    window: { addEventListener: (name, fn) => { windowHandlers[name] = fn; } },
+    FormData: class { get(name) { return ({ name: "학생", grade: "2", classroom: "2", clubs: "시그마" })[name]; } },
+  });
+  vm.runInContext(readFileSync(new URL("./app.js", import.meta.url), "utf8"), context);
+  vm.runInContext("showToast = () => {};", context);
+  windowHandlers["planner-login"]({ detail: { user: { id: "test-user", user_metadata: { clubs: ["파이", "CC"] } }, profile: { role: "student" }, loginClub: "시그마" } });
+  assert.deepEqual([...vm.runInContext("state.profile.clubs", context)], ["파이", "CC"]);
+  assert.doesNotMatch(root.innerHTML, /name="clubs"/);
+  assert.match(root.innerHTML, /등록된 동아리/);
+  await rootHandlers.submit({ preventDefault() {}, target: { id: "profile-form" } });
+  assert.deepEqual(JSON.parse(storage.get(`${model.STORAGE_KEY}:test-user`)).profile.clubs, ["파이", "CC"]);
+  windowHandlers["planner-login"]({ detail: { user: { id: "old-user", user_metadata: {} }, profile: { role: "student" } } });
+  assert.deepEqual([...vm.runInContext("state.profile.clubs", context)], []);
 });
 
 test("multiple selected clubs survive signup serialization", async () => {
