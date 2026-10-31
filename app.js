@@ -43,6 +43,7 @@ function dueInfo(key) {
   if (days === null) return { text: "마감일 없음", className: "" };
   if (days < 0) return { text: `${Math.abs(days)}일 지남`, className: "overdue" };
   if (days === 0) return { text: "오늘 마감", className: "today" };
+  if (days === 1) return { text: "D-1", className: "urgent" };
   if (days <= 3) return { text: `D-${days}`, className: "soon" };
   return { text: `D-${days}`, className: "" };
 }
@@ -113,7 +114,7 @@ function renderNoticeRow(notice) {
   const due = dueInfo(notice.dueDate);
   const completed = state.completedNoticeIds.includes(notice.id);
   const saved = calendarEvents().some(event => event.kind === "notice" && event.id === notice.id);
-  return `<article class="notice-row ${completed ? "completed" : ""}">
+  return `<article class="notice-row ${completed ? "completed" : ["urgent", "today", "overdue"].includes(due.className) ? "deadline-alert" : ""}">
     <input class="check" type="checkbox" data-complete-notice="${escapeHtml(notice.id)}" aria-label="${escapeHtml(notice.title)} 완료" ${completed ? "checked" : ""}>
     <div class="notice-main">
       <button type="button" class="notice-title" data-action="detail" data-id="${escapeHtml(notice.id)}">${escapeHtml(notice.title)}</button>
@@ -155,7 +156,7 @@ function renderCalendar(large = false) {
 function renderAgenda(date) {
   const events = calendarEvents().filter((event) => event.date === date);
   if (!events.length) return `<div class="empty-state" style="min-height:135px"><span>${icon("calendar-x-2")}</span><strong>일정이 없습니다</strong><p>선택한 날짜에 등록된 일정이 없습니다.</p></div>`;
-  return `<div class="agenda-list">${events.map((event) => `<div class="agenda-item">
+  return `<div class="agenda-list">${events.map((event) => `<div class="agenda-item ${!event.done && ["urgent", "today", "overdue"].includes(dueInfo(event.date).className) ? "deadline-alert" : ""}">
     <span class="agenda-accent ${event.kind === "personal" ? "personal" : ""}"></span>
     <div style="min-width:0;flex:1"><div class="agenda-title" style="${event.done ? "text-decoration:line-through;color:#8a9898" : ""}">${escapeHtml(event.title)}</div><div class="agenda-meta">${event.kind === "personal" ? "개인 일정" : escapeHtml(event.subject)}</div></div>
     <input class="check" type="checkbox" data-${event.kind === "personal" ? "complete-event" : "complete-notice"}="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)} 완료" ${event.done ? "checked" : ""}>

@@ -117,8 +117,10 @@ h3 { margin: 0; font-size: 14px; }
 .notice-body-preview { color: var(--muted); margin: 6px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
 .notice-actions { display: flex; align-items: center; gap: 7px; padding-top: 1px; }
 .deadline { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; color: #526b6c; font-size: 11px; white-space: nowrap; }
-.deadline.soon, .deadline.today { color: var(--amber); }
-.deadline.overdue { color: var(--red); }
+.deadline.soon { color: var(--amber); }
+.deadline.urgent, .deadline.today, .deadline.overdue { color: #b42318; }
+.deadline-alert .notice-title, .deadline-alert .agenda-title { color: #b42318; }
+.deadline-alert .agenda-accent { background: #b42318; }
 .deadline svg { width: 14px; height: 14px; }
 .empty-state { text-align: center; display: grid; place-content: center; gap: 9px; min-height: 270px; color: var(--muted); }
 .empty-state svg { margin: auto; width: 27px; height: 27px; color: #9caeaf; }
