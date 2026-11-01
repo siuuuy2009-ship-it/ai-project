@@ -155,7 +155,7 @@ function applySignupProfile(profile, metadata = {}) {
   if ([1, 2, 3].includes(metadata.grade)) next.grade = metadata.grade;
   if (Number.isInteger(metadata.classroom) && metadata.classroom >= 1 && metadata.classroom <= 30) next.classroom = metadata.classroom;
   if (typeof metadata.student_number === "string" && /^[0-9]{1,10}$/.test(metadata.student_number)) next.studentNumber = metadata.student_number;
-  if (Array.isArray(metadata.clubs)) next.clubs = [...new Set(metadata.clubs.filter(value => typeof value === "string" && value.trim().length > 0 && value.length <= 30).map(value => value.trim()))].slice(0, 10);
+  if (Array.isArray(metadata.clubs)) next.clubs = [...new Set(metadata.clubs.filter(value => typeof value === "string" && value.trim().length > 0 && value.length <= 30).map(value => value.trim()))].slice(0, 12);
   return next;
 }
 

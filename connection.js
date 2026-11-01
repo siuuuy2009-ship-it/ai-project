@@ -27,7 +27,7 @@ const PlannerConnection = (() => {
       if (response.status === 404 || body.code === "PGRST202") throw new Error("DB 준비가 필요합니다. Supabase SQL Editor에서 schema.sql을 실행하세요.");
       throw new Error(`서버에서 연결 확인을 완료하지 못했습니다. (HTTP ${response.status})`);
     }
-    if (body.schema_version !== 1 || body.table_count !== 6) throw new Error("예상한 학교 플래너 DB 구조와 다릅니다.");
+    if (![1, 2].includes(body.schema_version) || body.table_count !== 6) throw new Error("예상한 학교 플래너 DB 구조와 다릅니다.");
     return { schemaVersion: body.schema_version, tableCount: body.table_count };
   }
   return { validateSettings, checkConnection };

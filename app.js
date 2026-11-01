@@ -23,6 +23,11 @@ let editingNoticeId = null;
 let groupFormOpen = false;
 let activeDialog = null;
 let toastTimer;
+let cloudStore = null;
+let cloudSaving = false;
+let refreshTimer = null;
+let refreshing = false;
+let cloudUserId = null;
 
 const icon = (name) => `<i data-lucide="${name}" aria-hidden="true"></i>`;
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
@@ -49,6 +54,7 @@ function dueInfo(key) {
 }
 
 function persist(next, successMessage) {
+  if (cloudStore) return persistCloud(next, successMessage);
   try {
     localStorage.setItem(accountStorageKey, JSON.stringify(next));
     state = next;
@@ -60,6 +66,60 @@ function persist(next, successMessage) {
     return false;
   }
 }
+
+async function persistCloud(next, message) {
+  if (cloudSaving) return false;
+  const store = cloudStore;
+  cloudSaving = true;
+  root.inert = true;
+  try {
+    await store.save(state, next);
+    const loaded = await store.load();
+    if (store !== cloudStore) return false;
+    state = loaded;
+    render();
+    if (message) showToast(message);
+    return true;
+  } catch (error) {
+    if (store === cloudStore) {
+      try { state = await store.load(); render(); } catch { /* Keep the last confirmed state visible. */ }
+      showToast(error.message);
+    }
+    return false;
+  } finally { cloudSaving = false; root.inert = false; }
+}
+
+async function refreshCloud(force = false) {
+  if (!cloudStore || cloudSaving || refreshing || activeDialog || (!force && mode === "teacher") || document.hidden) return;
+  refreshing = true;
+  const store = cloudStore;
+  const previous = state;
+  try {
+    const loaded = await store.load();
+    if (store === cloudStore && !cloudSaving && state === previous && !activeDialog) { state = loaded; render(); }
+  } catch (error) { if (store === cloudStore) showToast(error.message); }
+  finally { refreshing = false; }
+}
+
+globalThis.PlannerApp = {
+  async open(session) {
+    const store = PlannerCloud.createClient(globalThis.PLANNER_SUPABASE, session);
+    const loaded = await store.load();
+    cloudStore = store;
+    cloudUserId = session.user.id;
+    window.dispatchEvent(new CustomEvent("planner-login", { detail: { ...session, cloudState: loaded } }));
+    clearInterval(refreshTimer);
+    refreshTimer = setInterval(refreshCloud, 20000);
+  },
+  close() {
+    const token = cloudStore?.getToken();
+    cloudStore = null;
+    cloudUserId = null;
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+    return token;
+  },
+};
 
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -82,7 +142,7 @@ function renderSidebar() {
     <nav class="side-nav" aria-label="주요 메뉴">
       ${items.map(([id, symbol, label]) => `<button type="button" class="side-link ${view === id ? "active" : ""}" data-action="nav" data-view="${id}" aria-label="${label}" title="${label}">${icon(symbol)}<span>${label}</span></button>`).join("")}
     </nav>
-    <div class="sidebar-foot">체험 데이터<br>이 브라우저에만 저장됩니다.</div>
+    <div class="sidebar-foot">${cloudStore ? "계정에 저장됨" : "체험 데이터"}</div>
   </aside>`;
 }
 
@@ -91,6 +151,7 @@ function renderTopbar() {
   return `<header class="topbar">
     <div class="topbar-left"><span>학교 플래너</span><span class="term">/ ${roleName}</span></div>
     <div class="topbar-right">
+      ${cloudStore ? `<button type="button" class="icon-button" data-action="cloud-refresh" aria-label="새 소식 확인" title="새 소식 확인">${icon("refresh-cw")}</button>` : ""}
       <span>${mode === "student" ? "학생" : "교사"}</span>
       <button type="button" class="icon-button" data-action="logout" aria-label="로그아웃" title="로그아웃">${icon("log-out")}</button>
       <button type="button" class="icon-button" data-action="profile" aria-label="학생 정보 설정" title="학생 정보 설정">${icon("settings-2")}</button>
@@ -169,7 +230,7 @@ function renderFeed() {
   const notices = filteredNotices();
   const subjects = [...new Set(visibleNotices(state).map((notice) => notice.subject))].sort((a, b) => a.localeCompare(b, "ko"));
   const tabs = [["all", "전체"], ["notice", "공지"], ["assignment", "과제"], ["soon", "마감 임박"]];
-  return `<div class="page-heading"><div><p class="eyebrow">STUDENT DASHBOARD</p><h1>공지와 과제</h1><p class="subheading">${state.profile.grade}학년 ${state.profile.classroom}반${state.profile.clubs.length ? ` · ${escapeHtml(state.profile.clubs.join(", "))}` : ""}</p></div><span class="badge">예시 데이터 포함</span></div>
+  return `<div class="page-heading"><div><p class="eyebrow">STUDENT DASHBOARD</p><h1>공지와 과제</h1><p class="subheading">${state.profile.grade}학년 ${state.profile.classroom}반${state.profile.clubs.length ? ` · ${escapeHtml(state.profile.clubs.join(", "))}` : ""}</p></div><span class="badge">${cloudStore ? "내게 온 소식" : "예시 데이터 포함"}</span></div>
     <div class="dashboard-grid">
       <section class="pane" aria-label="공지 및 과제 목록">
         <div class="section-heading"><h2>내게 온 소식</h2><div class="count-line"><strong>${notices.length}</strong>건</div></div>
@@ -222,10 +283,10 @@ function renderAudiencePicker(notice) {
 function renderTeacher() {
   const editing = state.notices.find((notice) => notice.id === editingNoticeId);
   const notices = [...state.notices].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return `<div class="page-heading"><div><p class="eyebrow">TEACHER WORKSPACE</p><h1>공지 관리</h1></div><span class="badge">체험 모드</span></div>
+  return `<div class="page-heading"><div><p class="eyebrow">TEACHER WORKSPACE</p><h1>공지 관리</h1></div><span class="badge">${cloudStore ? "교사" : "체험 모드"}</span></div>
     <div class="teacher-layout">
       <section class="teacher-left" aria-label="그룹 관리"><div class="section-heading"><h2>대상 그룹</h2><span class="section-note">${state.groups.length}개</span></div>
-        <div class="group-list">${state.groups.map((group) => `<div class="group-row">${icon(group.kind === "class" ? "users-round" : "shapes")}<span>${escapeHtml(group.name)}</span><small>${group.kind === "class" ? "학급" : "동아리"}</small><button type="button" class="icon-button" ${group.builtIn ? "disabled" : ""} data-action="delete-group" data-id="${escapeHtml(group.id)}" aria-label="${escapeHtml(group.name)} 삭제" title="그룹 삭제">${icon("trash-2")}</button></div>`).join("")}</div>
+        <div class="group-list">${state.groups.map((group) => `<div class="group-row">${icon(group.kind === "class" ? "users-round" : "shapes")}<span>${escapeHtml(group.name)}</span><small>${group.kind === "class" ? "학급" : "동아리"}</small><button type="button" class="icon-button" ${group.builtIn || (cloudStore && group.ownerId !== cloudUserId) ? "disabled" : ""} data-action="delete-group" data-id="${escapeHtml(group.id)}" aria-label="${escapeHtml(group.name)} 삭제" title="그룹 삭제">${icon("trash-2")}</button></div>`).join("")}</div>
         ${renderGroupForm()}
       </section>
       <section class="pane" aria-label="공지 작성"><div class="section-heading"><h2>${editing ? "공지 수정" : "공지·과제 작성"}</h2></div>
@@ -236,7 +297,7 @@ function renderTeacher() {
           <div class="field full"><label for="notice-body">내용</label><textarea id="notice-body" name="body" required maxlength="3000" placeholder="전달할 내용을 입력하세요">${escapeHtml(editing?.body || "")}</textarea></div>
           <div class="field full">${renderAudiencePicker(editing)}</div>
           <div class="field"><label for="notice-due">마감일</label><input id="notice-due" name="dueDate" type="date" value="${escapeHtml(editing?.dueDate || "")}"></div>
-          <div class="field full"><label for="notice-file">첨부파일</label><input id="notice-file" name="attachment" type="file" accept=".pdf,.hwp,.hwpx,.png,.jpg,.jpeg"><span class="field-help">${editing?.attachment ? `현재 파일: ${escapeHtml(editing.attachment.name)} · ` : ""}1MB 이하 파일은 이 브라우저에 저장됩니다.</span></div>
+          <div class="field full"><label for="notice-file">첨부파일</label><input id="notice-file" name="attachment" type="file" accept=".pdf,.hwp,.hwpx,.png,.jpg,.jpeg"><span class="field-help">${editing?.attachment ? `현재 파일: ${escapeHtml(editing.attachment.name)} · ` : ""}1MB 이하 파일을 첨부할 수 있습니다.</span></div>
         </div><div class="form-actions">${editing ? `<button type="button" class="button" data-action="cancel-edit">수정 취소</button>` : ""}<button type="submit" class="button primary">${icon(editing ? "save" : "send")} ${editing ? "변경 저장" : "공지 등록"}</button></div></form>
       </section>
     </div>
@@ -250,7 +311,7 @@ function renderDialogs() {
   const editingEvent = activeDialog?.type === "event" ? calendarEvents().find(item => item.id === activeDialog.id && item.kind === activeDialog.kind) : null;
   return `<dialog id="detail-dialog" aria-labelledby="detail-title">${notice ? `<div class="dialog-inner"><div class="dialog-header"><div><div class="dialog-meta"><span class="type-tag ${notice.type}">${notice.type === "assignment" ? "과제" : "공지"}</span><span class="subject-tag">${escapeHtml(notice.subject)}</span></div><h2 id="detail-title" style="margin-top:11px">${escapeHtml(notice.title)}</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><div class="dialog-meta"><span class="audience-tag">${escapeHtml(audienceLabel(notice))}</span><span class="muted small">${notice.dueDate ? `마감 ${formatDate(notice.dueDate)}` : "마감일 없음"}</span></div><p class="dialog-body">${escapeHtml(notice.body)}</p>${notice.attachment ? `<a class="button" href="${escapeHtml(notice.attachment.dataUrl)}" download="${escapeHtml(notice.attachment.name)}">${icon("paperclip")} ${escapeHtml(notice.attachment.name)}</a>` : ""}<div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">닫기</button>${(notice.dueDate || notice.type === "assignment") && mode === "student" ? `<button type="button" class="button primary" data-action="save-planner" data-id="${escapeHtml(notice.id)}">${icon("calendar-plus-2")}${calendarEvents().some(item => item.kind === "notice" && item.id === notice.id) ? "플래너에서 제거" : "플래너에 추가"}</button>` : ""}</div></div>` : ""}</dialog>
     <dialog id="event-dialog" aria-labelledby="event-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="event-title">${editingEvent ? "일정 수정" : "일정 추가"}</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><form id="event-form" class="field-grid"><div class="field full"><label for="event-name">일정 이름</label><input id="event-name" name="title" value="${escapeHtml(editingEvent?.title || "")}" required maxlength="80" placeholder="예: 수행평가 준비"></div><div class="field full"><label for="event-date">날짜</label><input id="event-date" name="date" type="date" required value="${escapeHtml(editingEvent?.date || selectedDate)}"></div><div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button class="button primary" type="submit">일정 저장</button></div></div></form></div></dialog>
-    <dialog id="profile-dialog" aria-labelledby="profile-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="profile-title">학생 정보</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><form id="profile-form" class="field-grid"><div class="field full"><label for="profile-name">이름</label><input id="profile-name" name="name" required maxlength="20" value="${escapeHtml(state.profile.name)}"></div><div class="field"><label for="profile-grade">학년</label><select id="profile-grade" name="grade">${[1, 2, 3].map((n) => `<option value="${n}" ${state.profile.grade === n ? "selected" : ""}>${n}학년</option>`).join("")}</select></div><div class="field"><label for="profile-classroom">반</label><input id="profile-classroom" name="classroom" type="number" min="1" max="30" required value="${state.profile.classroom}"></div><div class="field full"><span class="field-label">등록된 동아리</span><p>${state.profile.clubs.length ? state.profile.clubs.map(escapeHtml).join(", ") : "소속 없음"}</p></div><div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button type="submit" class="button primary">저장</button></div></div></form></div></dialog>`;
+    <dialog id="profile-dialog" aria-labelledby="profile-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="profile-title">학생 정보</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><form id="profile-form" class="field-grid"><div class="field full"><label for="profile-name">이름</label><input id="profile-name" name="name" required maxlength="20" value="${escapeHtml(state.profile.name)}"></div><div class="field"><label for="profile-grade">학년</label><select id="profile-grade" name="grade" ${cloudStore && state.profile.grade ? "disabled" : ""}>${[1, 2, 3].map((n) => `<option value="${n}" ${state.profile.grade === n ? "selected" : ""}>${n}학년</option>`).join("")}</select></div><div class="field"><label for="profile-classroom">반</label><input id="profile-classroom" name="classroom" ${cloudStore && state.profile.classroom ? "disabled" : ""} type="number" min="1" max="30" required value="${state.profile.classroom}"></div><div class="field full"><span class="field-label">등록된 동아리</span><p>${state.profile.clubs.length ? state.profile.clubs.map(escapeHtml).join(", ") : "소속 없음"}</p></div><div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button type="submit" class="button primary">저장</button></div></div></form></div></dialog>`;
 }
 
 function render() {
@@ -274,12 +335,14 @@ function toggleInList(list, id) {
   return list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
 }
 
-root.addEventListener("click", (event) => {
+root.addEventListener("click", async (event) => {
+  if (cloudSaving) return;
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const { action, id } = button.dataset;
   if (action === "nav") { view = button.dataset.view; activeDialog = null; render(); return; }
   if (action === "logout") { window.dispatchEvent(new Event("planner-logout")); return; }
+  if (action === "cloud-refresh") { await refreshCloud(true); return; }
   if (action === "filter") { filter = button.dataset.filter; render(); return; }
   if (action === "month") {
     const [year, month] = calendarMonth.split("-").map(Number);
@@ -305,6 +368,7 @@ root.addEventListener("click", (event) => {
   }
   if (action === "toggle-group") { groupFormOpen = !groupFormOpen; render(); return; }
   if (action === "delete-group") {
+    if (cloudStore && state.groups.find(group => group.id === id)?.ownerId !== cloudUserId) { showToast("본인이 만든 그룹만 삭제할 수 있습니다."); return; }
     if (state.groups.find(group => group.id === id)?.builtIn) { showToast("학교 기본 대상은 삭제할 수 없습니다."); return; }
     if (state.notices.some((notice) => PlannerModel.audienceIds(notice).includes(id))) { showToast("이 그룹을 대상으로 한 공지를 먼저 수정해 주세요."); return; }
     if (confirm("이 그룹을 삭제할까요?")) { const next = structuredClone(state); next.groups = next.groups.filter((group) => group.id !== id); persist(next, "그룹을 삭제했습니다."); }
@@ -350,7 +414,8 @@ root.addEventListener("input", (event) => {
   nextInput?.setSelectionRange(position, position);
 });
 
-root.addEventListener("change", (event) => {
+root.addEventListener("change", async (event) => {
+  if (cloudSaving) return;
   const target = event.target;
   if (target.name === "audienceScope") {
     root.querySelector("#audience-groups").disabled = target.value === "all";
@@ -387,6 +452,7 @@ function readAttachment(file) {
 
 root.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (cloudSaving) return;
   const form = event.target;
   const data = new FormData(form);
   if (form.id === "group-form") {
@@ -431,7 +497,7 @@ root.addEventListener("submit", async (event) => {
     if (original) next.notices = next.notices.map((item) => item.id === original.id ? notice : item);
     else next.notices.unshift(notice);
     const message = original ? "공지를 수정했습니다." : "공지를 등록했습니다.";
-    if (persist(next, message)) { editingNoticeId = null; render(); }
+    if (await persist(next, message)) { editingNoticeId = null; render(); }
     return;
   }
   if (form.id === "event-form") {
@@ -456,8 +522,8 @@ root.addEventListener("submit", async (event) => {
     const next = structuredClone(state);
     next.profile = {
       ...next.profile,
-      name: String(data.get("name")).trim(), grade: Number(data.get("grade")),
-      classroom: Number(data.get("classroom")),
+      name: String(data.get("name")).trim(), grade: cloudStore && state.profile.grade ? state.profile.grade : Number(data.get("grade")),
+      classroom: cloudStore && state.profile.classroom ? state.profile.classroom : Number(data.get("classroom")),
     };
     activeDialog = null;
     persist(next, "학생 정보를 저장했습니다.");
@@ -465,14 +531,17 @@ root.addEventListener("submit", async (event) => {
 });
 
 window.addEventListener("planner-login", (event) => {
-  const { user, profile } = event.detail;
+  const { user, profile, cloudState } = event.detail;
   accountStorageKey = `${STORAGE_KEY}:${user.id}`;
   let stored;
-  try { stored = JSON.parse(localStorage.getItem(accountStorageKey)); state = restoreState(stored); }
-  catch { state = createInitialState(); }
-  if (!stored) state.profile = PlannerModel.applySignupProfile(state.profile, user.user_metadata);
-  state.profile.clubs = PlannerModel.applySignupProfile({ clubs: [] }, user.user_metadata).clubs;
-  state.profile.name = user.user_metadata?.display_name || profile.display_name || "학생";
+  if (cloudState) state = cloudState;
+  else {
+    try { stored = JSON.parse(localStorage.getItem(accountStorageKey)); state = restoreState(stored); }
+    catch { state = createInitialState(); }
+    if (!stored) state.profile = PlannerModel.applySignupProfile(state.profile, user.user_metadata);
+    state.profile.clubs = PlannerModel.applySignupProfile({ clubs: [] }, user.user_metadata).clubs;
+    state.profile.name = user.user_metadata?.display_name || profile.display_name || "학생";
+  }
   mode = profile.role === "teacher" ? "teacher" : "student";
   view = mode === "teacher" ? "teacher" : "feed";
   activeDialog = null;
@@ -480,5 +549,6 @@ window.addEventListener("planner-login", (event) => {
   search = "";
   filter = "all";
   subjectFilter = "all";
+  if (cloudState && mode === "student" && !state.profile.grade && !state.profile.classroom) activeDialog = { type: "profile" };
   render();
 });

@@ -29,6 +29,6 @@ test("missing schema and invalid credentials are not reported as success", async
     })));
   }
   await assert.rejects(connection.checkConnection(settings, async () => ({
-    ok: true, json: async () => ({ schema_version: 2, table_count: 6 }),
+    ok: true, json: async () => ({ schema_version: 99, table_count: 6 }),
   })));
 });

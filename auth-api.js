@@ -39,7 +39,7 @@ const PlannerAuth = (() => {
           const number = String(studentNumber || "").trim();
           if (!/^[0-9]{1,10}$/.test(number)) throw new Error("학번은 숫자 1~10자리로 입력해 주세요.");
           const list = [...new Set(String(clubs).split(",").map(value => value.trim()).filter(Boolean))];
-          if (String(clubs).length > 200 || list.length > 10 || list.some(value => value.length > 30)) throw new Error("동아리는 이름당 30자, 최대 10개까지 입력해 주세요.");
+          if (String(clubs).length > 200 || list.length > 12 || list.some(value => value.length > 30)) throw new Error("동아리는 이름당 30자, 최대 12개까지 입력해 주세요.");
           Object.assign(student, { grade: Number(grade), classroom: Number(classroom), student_number: number, clubs: list });
         }
         return request("/auth/v1/signup", { email: email.trim(), password,
@@ -54,7 +54,7 @@ const PlannerAuth = (() => {
         if (profile.role !== role) throw new Error(role === "teacher"
           ? "교사 승인이 필요합니다. 관리자에게 승인을 요청해 주세요."
           : "교사 계정입니다. 교사를 선택하고 로그인해 주세요.");
-        return { user: session.user, profile, accessToken: session.access_token };
+        return { user: session.user, profile, accessToken: session.access_token, refreshToken: session.refresh_token };
       },
       logout: (token) => request("/auth/v1/logout", {}, token),
     };

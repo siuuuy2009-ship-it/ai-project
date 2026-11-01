@@ -97,7 +97,7 @@
       } else {
         const session = await client.login(values);
         token = session.accessToken;
-        window.dispatchEvent(new CustomEvent("planner-login", { detail: { user: session.user, profile: session.profile } }));
+        await globalThis.PlannerApp.open(session);
         host.hidden = true;
         app.hidden = false;
         form.reset();
@@ -107,7 +107,7 @@
     finally { controls.forEach((control) => { control.disabled = false; }); syncRole(); }
   });
   window.addEventListener("planner-logout", async () => {
-    const previousToken = token;
+    const previousToken = globalThis.PlannerApp.close() || token;
     token = null;
     app.hidden = true;
     app.replaceChildren();
