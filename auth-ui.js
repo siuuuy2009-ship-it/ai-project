@@ -6,6 +6,40 @@
     ? globalThis.PlannerRoster.create(globalThis.PLANNER_STUDENT_ROSTER) : null;
   let signup = false;
   let token = null;
+  let busy = false;
+  let pendingEmail = "";
+  let cooldownTimer;
+  const cooldownKey = "school-planner-email-retry-until";
+  let cooldownUntil = 0;
+  try {
+    const stored = Number(globalThis.sessionStorage?.getItem(cooldownKey));
+    if (Number.isFinite(stored) && stored > Date.now() && stored <= Date.now() + 86400000) cooldownUntil = stored;
+  } catch { /* Storage may be unavailable. */ }
+  function secondsLeft() { return Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000)); }
+  function updateCooldown() {
+    const seconds = secondsLeft();
+    const wait = seconds >= 60 ? `${Math.floor(seconds / 60)}분 ${seconds % 60}초` : `${seconds}초`;
+    const submit = host.querySelector?.('.auth-submit');
+    if (submit) { submit.disabled = busy || (signup && seconds > 0); submit.textContent = busy ? "처리 중…" : signup && seconds ? `${wait} 후 다시 시도` : signup ? "회원가입" : "로그인"; }
+    const resend = document.getElementById("resend-email");
+    if (resend) { resend.disabled = busy || seconds > 0; resend.textContent = seconds ? `메일 재요청까지 ${wait}` : "인증 메일 다시 요청"; }
+    if (!seconds) { clearInterval(cooldownTimer); cooldownTimer = null; }
+  }
+  function setCooldown(seconds) {
+    cooldownUntil = Date.now() + seconds * 1000;
+    try { globalThis.sessionStorage?.setItem(cooldownKey, String(cooldownUntil)); } catch { /* Keep the in-memory cooldown. */ }
+    startCountdown();
+  }
+  function startCountdown() {
+    clearInterval(cooldownTimer);
+    updateCooldown();
+    if (secondsLeft()) cooldownTimer = setInterval(updateCooldown, 1000);
+  }
+  function showPending() {
+    document.getElementById("auth-form").hidden = true;
+    document.getElementById("email-next").hidden = false;
+    document.getElementById("pending-email").textContent = pendingEmail;
+  }
   function render() {
     host.innerHTML = `<section class="auth-page">
       <a class="auth-brand" href="./index.html"><i data-lucide="book-open-check"></i>학교 플래너</a>
@@ -34,11 +68,38 @@
         <p id="auth-message" role="status" aria-live="polite"></p>
         <button class="auth-submit" type="submit">${signup ? "회원가입" : "로그인"}</button>
       </form>
+      <section id="email-next" hidden aria-label="이메일 인증">
+        <h2>이메일 인증 확인</h2>
+        <p id="pending-email"></p>
+        <p>받은편지함과 스팸함을 확인해 주세요. 이미 가입한 이메일에는 새 가입 메일이 오지 않을 수 있습니다.</p>
+        <p id="email-message" role="status" aria-live="polite"></p>
+        <button id="resend-email" class="auth-submit" type="button">인증 메일 다시 요청</button>
+        <button class="auth-secondary" type="button" data-tab="login">로그인으로 이동</button>
+        <button class="auth-secondary" type="button" data-new-signup>다른 이메일로 가입</button>
+      </section>
     </section>`;
     lucide.createIcons();
+    if (signup && pendingEmail) showPending();
+    startCountdown();
     if (signup && roster && !roster.count) document.getElementById("auth-message").textContent = "학생 명단을 불러오지 못했습니다. 관리자에게 문의해 주세요.";
   }
-  host.addEventListener("click", (event) => {
+  host.addEventListener("click", async (event) => {
+    if (busy) return;
+    if (event.target.closest("[data-new-signup]")) { pendingEmail = ""; signup = true; render(); return; }
+    if (event.target.closest("#resend-email")) {
+      if (!pendingEmail || secondsLeft()) return;
+      busy = true;
+      updateCooldown();
+      const message = document.getElementById("email-message");
+      message.textContent = "메일을 요청하고 있습니다.";
+      try {
+        await client.resend(pendingEmail);
+        setCooldown(60);
+        message.textContent = "재발송 요청을 처리했습니다. 인증 대기 중인 계정이라면 받은편지함과 스팸함을 확인해 주세요.";
+      } catch (error) { if (error.retryAfter) setCooldown(error.retryAfter); message.textContent = error.message; }
+      finally { busy = false; updateCooldown(); }
+      return;
+    }
     const tab = event.target.closest("[data-tab]");
     if (tab) { signup = tab.dataset.tab === "signup"; render(); }
     const toggle = event.target.closest("[data-reveal]");
@@ -81,18 +142,30 @@
   });
   host.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (busy || (signup && secondsLeft())) return;
     const form = event.target;
     const formData = new FormData(form);
     const values = Object.fromEntries(formData);
     if (signup) values.clubs = formData.getAll("clubs").join(",");
     const message = document.getElementById("auth-message");
     const controls = host.querySelectorAll("button, input, select");
+    busy = true;
     controls.forEach((control) => { control.disabled = true; });
     message.textContent = "처리 중입니다.";
     try {
       if (signup) {
-        await client.signup(values.role === "student" && roster ? roster.resolve(values) : values);
-        message.textContent = "가입 요청을 처리했습니다. 인증 메일이 도착하면 링크를 누른 뒤 로그인해 주세요. 이미 가입한 이메일이라면 로그인해 주세요." + (values.role === "teacher" ? " 교사 권한은 관리자 승인이 필요합니다." : "");
+        const result = await client.signup(values.role === "student" && roster ? roster.resolve(values) : values);
+        if (result.access_token) {
+          pendingEmail = "";
+          signup = false;
+          render();
+          document.getElementById("auth-message").textContent = "가입 요청을 처리했습니다. 입력한 이메일과 비밀번호로 로그인해 주세요.";
+        } else {
+          pendingEmail = values.email.trim();
+          setCooldown(60);
+          showPending();
+          document.getElementById("email-message").textContent = "가입 요청을 처리했습니다. 이메일의 인증 링크를 누른 다음 로그인해 주세요." + (values.role === "teacher" ? " 교사 계정은 관리자 승인이 필요합니다." : "");
+        }
         form.querySelectorAll('input[type="password"], [name="password"], [name="confirmation"]').forEach((input) => { input.value = ""; });
       } else {
         const session = await client.login(values);
@@ -103,8 +176,8 @@
         form.reset();
         window.scrollTo(0, 0);
       }
-    } catch (error) { message.textContent = error.message; }
-    finally { controls.forEach((control) => { control.disabled = false; }); syncRole(); }
+    } catch (error) { if (error.retryAfter && signup) setCooldown(error.retryAfter); message.textContent = error.message; }
+    finally { busy = false; controls.forEach((control) => { control.disabled = false; }); syncRole(); updateCooldown(); }
   });
   window.addEventListener("planner-logout", async () => {
     const previousToken = globalThis.PlannerApp.close() || token;

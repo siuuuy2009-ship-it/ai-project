@@ -64,3 +64,34 @@ test("login reports email confirmation and network errors", async () => {
   const offline = auth.createClient(config, async () => { throw new TypeError("network"); });
   await assert.rejects(offline.login(values), /연결/);
 });
+
+test("email quota, request throttling and SMTP rejection have distinct actionable errors", async () => {
+  for (const [data,status,expected,delay] of [
+    [{code:"over_email_send_rate_limit"},429,/발송 한도/,3600],
+    [{code:"over_request_rate_limit"},429,/가입 요청/,60],
+    [{msg:"email rate limit exceeded"},429,/발송 한도/,3600],
+    [{msg:"Email address not authorized"},400,/이 주소로/,undefined],
+    [{code:"unexpected_failure",msg:"Error sending confirmation email"},500,/메일 서버/,undefined],
+  ]) {
+    const client=auth.createClient(config,async()=>response(data,false,status));
+    await assert.rejects(client.resend("test@example.com"),error=>{assert.match(error.message,expected);assert.equal(error.retryAfter,delay);return true;});
+  }
+});
+
+test("server Retry-After takes precedence over fallback wait", async () => {
+  const client=auth.createClient(config,async()=>({ ...response({code:"over_request_rate_limit"},false,429),headers:{get:()=>"125"} }));
+  await assert.rejects(client.resend("test@example.com"),error=>error.retryAfter===125);
+});
+
+test("resend posts signup confirmation only and duplicate requests are suppressed", async()=>{
+  let resolve;
+  let count=0;
+  const client=auth.createClient(config,async(url,options)=>{
+    count++;assert.equal(url,config.url+"/auth/v1/resend");assert.deepEqual(JSON.parse(options.body),{type:"signup",email:"test@example.com"});
+    return new Promise(done=>{resolve=done;});
+  });
+  const first=client.resend(" test@example.com ");
+  await assert.rejects(client.resend("test@example.com"),/처리 중/);
+  assert.equal(count,1);
+  resolve(response({}));await first;
+});

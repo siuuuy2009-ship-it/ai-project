@@ -11,6 +11,7 @@ test("public auth page renders login and signup without local roster scripts", (
   const context = vm.createContext({
     PlannerModel: model, PlannerAuth: { createClient: () => ({}) },
     PLANNER_SUPABASE: {}, lucide: { createIcons() {} },
+    clearInterval() {}, setInterval() { return 1; },
     document: { getElementById: () => host }, window: { addEventListener() {} },
   });
   vm.runInContext(readFileSync(new URL("./auth-ui.js", import.meta.url), "utf8"), context);
