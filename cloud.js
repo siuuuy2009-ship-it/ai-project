@@ -18,6 +18,7 @@ const PlannerCloud = (() => {
       }
       const data = response.status === 204 ? null : await response.json().catch(() => null);
       if (!response.ok) {
+        if (data?.message === "SCHOOL_CHANGE_LIMIT") throw new Error("올해 소속 정보는 이미 2회 변경했습니다. 내년 1월 1일부터 다시 변경할 수 있습니다.");
         if (response.status === 401) throw new Error("로그인이 만료되었습니다. 다시 로그인해 주세요.");
         if (data?.code === "42703" || data?.code === "PGRST204") throw new Error("DB 업데이트가 필요합니다. upgrade-v2.sql을 실행해 주세요.");
         if (response.status === 403) throw new Error("저장 권한이 없습니다. 계정 역할과 공지 작성자를 확인하세요.");
@@ -52,7 +53,7 @@ const PlannerCloud = (() => {
     }
     async function load() {
       const health = await request("/rest/v1/rpc/planner_health", { method: "POST", body: {} });
-      if (health?.schema_version !== 2) throw new Error("DB 업데이트가 필요합니다. Supabase에서 upgrade-v2.sql을 실행해 주세요.");
+      if (!Number.isInteger(health?.schema_version) || health.schema_version < 2) throw new Error("DB 업데이트가 필요합니다. Supabase에서 upgrade-v2.sql을 실행해 주세요.");
       const [profiles, groups, notices, progress, events] = await Promise.all([
         request(`/rest/v1/profiles?id=eq.${current.user.id}&select=*`), rows("groups"),
         rows("notices", current.profile.role === "teacher" ? `&author_id=eq.${current.user.id}` : ""),
@@ -61,7 +62,10 @@ const PlannerCloud = (() => {
       const p = profiles[0];
       if (!p) throw new Error("학생 정보를 찾을 수 없습니다. 관리자에게 문의해 주세요.");
       return {
-        profile: { name: p.display_name, grade: p.grade, classroom: p.classroom, studentNumber: p.student_number || "", clubs: p.clubs || [] },
+        profile: { name: p.display_name, grade: p.grade, classroom: p.classroom, studentNumber: p.student_number || "", clubs: p.clubs || [],
+          schoolChangeYear: p.school_change_year || 0, schoolChangeCount: p.school_change_count || 0 },
+        schemaVersion: health.schema_version, schoolYear: health.school_year,
+        subjectImportance: PlannerModel.normalizeSubjectImportance(p.subject_importance),
         groups: [...PlannerModel.schoolGroups(), ...groups.map(g => ({ id: g.id, ownerId: g.owner_id, name: g.name,
           kind: g.kind, grade: g.grade, classroom: g.classroom, clubName: g.club_name }))],
         notices: notices.map(n => ({ id: n.id, authorId: n.author_id, type: n.type, subject: n.subject,
@@ -121,9 +125,22 @@ const PlannerCloud = (() => {
           method: "POST", body: next, headers: { Prefer: "resolution=merge-duplicates" },
         });
       }
-      if (before.profile.name !== after.profile.name) await mutate("profiles", "PATCH", { display_name: after.profile.name }, `?id=eq.${current.user.id}`);
-      if (!before.profile.grade && !before.profile.classroom && after.profile.grade && after.profile.classroom) {
+      if (PlannerModel.schoolChanged(before.profile, after.profile) && before.schemaVersion >= 3) {
+        PlannerModel.validateSchool(after.profile);
+        await request("/rest/v1/rpc/planner_update_school", { method: "POST", body: {
+          new_grade: after.profile.grade,new_classroom: after.profile.classroom,new_clubs: after.profile.clubs,new_display_name: after.profile.name,
+        } });
+      } else {
+        if (PlannerModel.schoolChanged(before.profile, after.profile) && (before.profile.grade || before.profile.classroom))
+          throw new Error("소속 변경을 사용하려면 관리자가 upgrade-v3.sql을 적용해야 합니다.");
+        if (before.profile.name !== after.profile.name) await mutate("profiles", "PATCH", { display_name: after.profile.name }, `?id=eq.${current.user.id}`);
+      }
+      if (before.schemaVersion < 3 && !before.profile.grade && !before.profile.classroom && after.profile.grade && after.profile.classroom) {
         await request("/rest/v1/rpc/planner_complete_profile", { method: "POST", body: { new_grade: after.profile.grade, new_classroom: after.profile.classroom } });
+      }
+      if (!same(before.subjectImportance || {},after.subjectImportance || {})) {
+        if (before.schemaVersion < 3) throw new Error("중요도 계정 저장을 사용하려면 관리자가 upgrade-v3.sql을 적용해야 합니다.");
+        await mutate("profiles","PATCH",{subject_importance:PlannerModel.normalizeSubjectImportance(after.subjectImportance)},`?id=eq.${current.user.id}`);
       }
     }
     return { load, save, getToken: () => current.accessToken };

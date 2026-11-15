@@ -28,6 +28,24 @@ let cloudSaving = false;
 let refreshTimer = null;
 let refreshing = false;
 let cloudUserId = null;
+let noticeOrder = "deadline";
+
+function withPersonalImportance(loaded) {
+  if (loaded.schemaVersion >= 3) return loaded;
+  try {
+    const stored = JSON.parse(localStorage.getItem(`${accountStorageKey}:importance`));
+    if (stored) return { ...loaded, subjectImportance: PlannerModel.normalizeSubjectImportance(stored) };
+  } catch { /* Invalid personal preferences use the default importance. */ }
+  return loaded;
+}
+
+function importanceBadge(subject) {
+  const level = PlannerModel.importanceFor(subject, state.subjectImportance);
+  return `<span class="importance-tag" data-importance="${level}" aria-label="${escapeHtml(subject)} 중요도 ${level}, ${["", "파랑", "초록", "노랑", "주황", "빨강"][level]}">중요도 ${level}/5</span>`;
+}
+
+function schoolStatus() { return PlannerModel.schoolChangeStatus(state.profile, state.schoolYear || new Date().getFullYear()); }
+function canEditSchool() { return (!cloudStore || state.schemaVersion >= 3) && schoolStatus().remaining > 0; }
 
 const icon = (name) => `<i data-lucide="${name}" aria-hidden="true"></i>`;
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
@@ -76,13 +94,13 @@ async function persistCloud(next, message) {
     await store.save(state, next);
     const loaded = await store.load();
     if (store !== cloudStore) return false;
-    state = loaded;
+    state = withPersonalImportance(loaded);
     render();
     if (message) showToast(message);
     return true;
   } catch (error) {
     if (store === cloudStore) {
-      try { state = await store.load(); render(); } catch { /* Keep the last confirmed state visible. */ }
+      try { state = withPersonalImportance(await store.load()); render(); } catch { /* Keep the last confirmed state visible. */ }
       showToast(error.message);
     }
     return false;
@@ -96,7 +114,7 @@ async function refreshCloud(force = false) {
   const previous = state;
   try {
     const loaded = await store.load();
-    if (store === cloudStore && !cloudSaving && state === previous && !activeDialog) { state = loaded; render(); }
+    if (store === cloudStore && !cloudSaving && state === previous && !activeDialog) { state = withPersonalImportance(loaded); render(); }
   } catch (error) { if (store === cloudStore) showToast(error.message); }
   finally { refreshing = false; }
 }
@@ -162,25 +180,26 @@ function renderTopbar() {
 }
 
 function filteredNotices() {
-  return visibleNotices(state).filter((notice) => {
+  const notices = visibleNotices(state).filter((notice) => {
     if (filter === "notice" && notice.type !== "notice") return false;
     if (filter === "assignment" && notice.type !== "assignment") return false;
     if (filter === "soon" && (notice.type !== "assignment" || daysUntil(notice.dueDate) > 3 || daysUntil(notice.dueDate) < 0 || !notice.dueDate)) return false;
     if (subjectFilter !== "all" && notice.subject !== subjectFilter) return false;
     return !search || `${notice.title} ${notice.body} ${notice.subject}`.toLowerCase().includes(search.toLowerCase());
   });
+  return noticeOrder === "importance" ? PlannerModel.sortByImportance(notices, state.subjectImportance) : notices;
 }
 
 function renderNoticeRow(notice) {
   const due = dueInfo(notice.dueDate);
   const completed = state.completedNoticeIds.includes(notice.id);
   const saved = calendarEvents().some(event => event.kind === "notice" && event.id === notice.id);
-  return `<article class="notice-row ${completed ? "completed" : ["urgent", "today", "overdue"].includes(due.className) ? "deadline-alert" : ""}">
+  return `<article data-importance="${PlannerModel.importanceFor(notice.subject,state.subjectImportance)}" class="notice-row ${completed ? "completed" : ["urgent", "today", "overdue"].includes(due.className) ? "deadline-alert" : ""}">
     <input class="check" type="checkbox" data-complete-notice="${escapeHtml(notice.id)}" aria-label="${escapeHtml(notice.title)} 완료" ${completed ? "checked" : ""}>
     <div class="notice-main">
       <button type="button" class="notice-title" data-action="detail" data-id="${escapeHtml(notice.id)}">${escapeHtml(notice.title)}</button>
       <p class="notice-body-preview">${escapeHtml(notice.body)}</p>
-      <div class="notice-meta"><span class="type-tag ${notice.type}">${notice.type === "assignment" ? "과제" : "공지"}</span><span class="subject-tag">${escapeHtml(notice.subject)}</span><span>${escapeHtml(audienceLabel(notice))}</span></div>
+      <div class="notice-meta"><span class="type-tag ${notice.type}">${notice.type === "assignment" ? "과제" : "공지"}</span><span class="subject-tag">${escapeHtml(notice.subject)}</span>${importanceBadge(notice.subject)}<span>${escapeHtml(audienceLabel(notice))}</span></div>
     </div>
     <div class="notice-actions">
       <span class="deadline ${due.className}">${icon("clock-3")}${due.text}</span>
@@ -219,7 +238,7 @@ function renderAgenda(date) {
   if (!events.length) return `<div class="empty-state" style="min-height:135px"><span>${icon("calendar-x-2")}</span><strong>일정이 없습니다</strong><p>선택한 날짜에 등록된 일정이 없습니다.</p></div>`;
   return `<div class="agenda-list">${events.map((event) => `<div class="agenda-item ${!event.done && ["urgent", "today", "overdue"].includes(dueInfo(event.date).className) ? "deadline-alert" : ""}">
     <span class="agenda-accent ${event.kind === "personal" ? "personal" : ""}"></span>
-    <div style="min-width:0;flex:1"><div class="agenda-title" style="${event.done ? "text-decoration:line-through;color:#8a9898" : ""}">${escapeHtml(event.title)}</div><div class="agenda-meta">${event.kind === "personal" ? "개인 일정" : escapeHtml(event.subject)}</div></div>
+    <div style="min-width:0;flex:1"><div class="agenda-title" style="${event.done ? "text-decoration:line-through;color:#8a9898" : ""}">${escapeHtml(event.title)}</div><div class="agenda-meta">${event.kind === "personal" ? "개인 일정" : `${escapeHtml(event.subject)} ${importanceBadge(event.subject)}`}</div></div>
     <input class="check" type="checkbox" data-${event.kind === "personal" ? "complete-event" : "complete-notice"}="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)} 완료" ${event.done ? "checked" : ""}>
     <button type="button" class="icon-button" data-action="edit-event" data-kind="${event.kind}" data-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)} 일정 수정" title="일정 수정">${icon("pencil")}</button>
     <button type="button" class="icon-button" data-action="${event.kind === "personal" ? "delete-event" : "remove-planner-notice"}" data-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)} ${event.kind === "personal" ? "일정 삭제" : "플래너에서 제거"}" title="${event.kind === "personal" ? "일정 삭제" : "플래너에서 제거 (원본 공지 유지)"}">${icon("trash-2")}</button>
@@ -233,10 +252,11 @@ function renderFeed() {
   return `<div class="page-heading"><div><p class="eyebrow">STUDENT DASHBOARD</p><h1>공지와 과제</h1><p class="subheading">${state.profile.grade}학년 ${state.profile.classroom}반${state.profile.clubs.length ? ` · ${escapeHtml(state.profile.clubs.join(", "))}` : ""}</p></div><span class="badge">${cloudStore ? "내게 온 소식" : "예시 데이터 포함"}</span></div>
     <div class="dashboard-grid">
       <section class="pane" aria-label="공지 및 과제 목록">
-        <div class="section-heading"><h2>내게 온 소식</h2><div class="count-line"><strong>${notices.length}</strong>건</div></div>
+        <div class="section-heading"><h2>내게 온 소식</h2><button type="button" class="button importance-settings-button" data-action="importance">${icon("sliders-horizontal")}과목별 중요도</button><div class="count-line"><strong>${notices.length}</strong>건</div></div>
         <div class="filter-row"><div class="tabs" role="group" aria-label="공지 필터">${tabs.map(([id, label]) => `<button type="button" class="tab ${filter === id ? "active" : ""}" data-action="filter" data-filter="${id}" aria-pressed="${filter === id}">${label}</button>`).join("")}</div>
           <div class="filter-tools"><label class="search-box">${icon("search")}<input type="search" data-search placeholder="제목 검색" value="${escapeHtml(search)}" aria-label="공지 검색"></label><select class="plain-select" data-subject-filter aria-label="과목 선택"><option value="all">모든 과목</option>${subjects.map((subject) => `<option value="${escapeHtml(subject)}" ${subjectFilter === subject ? "selected" : ""}>${escapeHtml(subject)}</option>`).join("")}</select></div>
         </div>
+        <div class="notice-sort"><label for="notice-order">정렬</label><select id="notice-order" class="plain-select" data-notice-order><option value="deadline" ${noticeOrder === "deadline" ? "selected" : ""}>마감일순</option><option value="importance" ${noticeOrder === "importance" ? "selected" : ""}>중요도 높은 순</option></select><span class="field-help">높음 <span class="importance-scale" aria-label="5 빨강, 4 주황, 3 노랑, 2 초록, 1 파랑">${[5,4,3,2,1].map(n => `<span class="importance-tag" data-importance="${n}">${n}</span>`).join("")}</span> 낮음</span></div>
         <div class="notice-list">${notices.length ? notices.map(renderNoticeRow).join("") : `<div class="empty-state">${icon("inbox")}<strong>표시할 공지가 없습니다</strong><p>검색어나 필터를 바꿔 보세요.</p></div>`}</div>
       </section>
       <aside class="aside-pane" aria-label="플래너 미리보기">
@@ -306,12 +326,37 @@ function renderTeacher() {
     </section>`;
 }
 
+function renderProfileDialog() {
+  const quota = schoolStatus();
+  const editable = canEditSchool();
+  const initializing = !state.profile.grade && !state.profile.classroom;
+  return `<dialog id="profile-dialog" aria-labelledby="profile-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="profile-title">학생 정보</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기">${icon("x")}</button></div>
+    <form id="profile-form" class="field-grid"><div class="field full"><label for="profile-name">이름</label><input id="profile-name" name="name" required maxlength="40" value="${escapeHtml(state.profile.name)}"></div>
+    <div class="field full"><p class="school-quota">${quota.year}년 소속 변경 <strong>${quota.used}/2회</strong> · 남은 횟수 ${quota.remaining}회</p><p class="field-help">학년·반·동아리를 한 번에 저장하면 1회입니다. 같은 정보 저장과 이름만 변경은 횟수를 쓰지 않습니다. 매년 1월 1일에 초기화됩니다.</p>${cloudStore && state.schemaVersion < 3 && !initializing ? '<p class="field-help">소속 변경 기능을 준비 중입니다. 관리자에게 문의해 주세요.</p>' : !quota.remaining ? '<p class="field-help">올해 변경 횟수를 모두 사용했습니다. 이름은 계속 수정할 수 있습니다.</p>' : ''}</div>
+    <div class="field"><label for="profile-grade">학년</label><select id="profile-grade" name="grade" ${!editable && !initializing ? "disabled" : ""}>${[1,2,3].map(n => `<option value="${n}" ${Number(state.profile.grade) === n ? "selected" : ""}>${n}학년</option>`).join("")}</select></div>
+    <div class="field"><label for="profile-classroom">반</label><input id="profile-classroom" name="classroom" type="number" min="1" max="30" required value="${state.profile.classroom || 1}" ${!editable && !initializing ? "disabled" : ""}></div>
+    <div class="field full">${PlannerModel.clubCheckboxes(state.profile.clubs).replace('<fieldset',`<fieldset ${editable ? '' : 'disabled'}`)}</div>
+    <div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button type="submit" class="button primary">저장</button></div></div></form></div></dialog>`;
+}
+
+function renderImportanceDialog() {
+  const subjects = [...new Set([...visibleNotices(state).map(n => n.subject), ...Object.keys(state.subjectImportance || {})])].sort((a,b) => a.localeCompare(b,"ko"));
+  const choices = level => [5,4,3,2,1].map(n => `<option value="${n}" ${n === level ? "selected" : ""}>${n} · ${["","파랑 (낮음)","초록","노랑 (보통)","주황","빨강 (높음)"][n]}</option>`).join("");
+  return `<dialog id="importance-dialog" aria-labelledby="importance-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="importance-title">내 과목별 중요도</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기">${icon("x")}</button></div>
+    <p class="field-help">과목마다 내가 중요하다고 생각하는 정도를 선택하세요. 기본값은 3입니다. ${cloudStore && state.schemaVersion >= 3 ? "내 계정에 저장됩니다." : "이 브라우저에 계정별로 저장됩니다."}</p>
+    <form id="importance-form"><div class="importance-list">${subjects.map((subject,index) => {
+      const level = PlannerModel.importanceFor(subject,state.subjectImportance);
+      return `<div class="importance-setting" data-importance="${level}"><label for="importance-${index}">${escapeHtml(subject)}</label><select id="importance-${index}" data-importance-subject="${escapeHtml(subject)}" data-importance-level>${choices(level)}</select></div>`;
+    }).join("")}</div><div class="importance-new field-grid"><div class="field"><label for="importance-new-subject">다른 과목 추가 (선택)</label><input id="importance-new-subject" name="newSubject" maxlength="25" placeholder="예: 수학"></div><div class="field"><label for="importance-new-level">중요도</label><select id="importance-new-level" name="newLevel">${choices(3)}</select></div></div>
+    <div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button class="button primary" type="submit">중요도 저장</button></div></form></div></dialog>`;
+}
+
 function renderDialogs() {
   const notice = state.notices.find((item) => item.id === activeDialog?.id);
   const editingEvent = activeDialog?.type === "event" ? calendarEvents().find(item => item.id === activeDialog.id && item.kind === activeDialog.kind) : null;
   return `<dialog id="detail-dialog" aria-labelledby="detail-title">${notice ? `<div class="dialog-inner"><div class="dialog-header"><div><div class="dialog-meta"><span class="type-tag ${notice.type}">${notice.type === "assignment" ? "과제" : "공지"}</span><span class="subject-tag">${escapeHtml(notice.subject)}</span></div><h2 id="detail-title" style="margin-top:11px">${escapeHtml(notice.title)}</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><div class="dialog-meta"><span class="audience-tag">${escapeHtml(audienceLabel(notice))}</span><span class="muted small">${notice.dueDate ? `마감 ${formatDate(notice.dueDate)}` : "마감일 없음"}</span></div><p class="dialog-body">${escapeHtml(notice.body)}</p>${notice.attachment ? `<a class="button" href="${escapeHtml(notice.attachment.dataUrl)}" download="${escapeHtml(notice.attachment.name)}">${icon("paperclip")} ${escapeHtml(notice.attachment.name)}</a>` : ""}<div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">닫기</button>${(notice.dueDate || notice.type === "assignment") && mode === "student" ? `<button type="button" class="button primary" data-action="save-planner" data-id="${escapeHtml(notice.id)}">${icon("calendar-plus-2")}${calendarEvents().some(item => item.kind === "notice" && item.id === notice.id) ? "플래너에서 제거" : "플래너에 추가"}</button>` : ""}</div></div>` : ""}</dialog>
     <dialog id="event-dialog" aria-labelledby="event-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="event-title">${editingEvent ? "일정 수정" : "일정 추가"}</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><form id="event-form" class="field-grid"><div class="field full"><label for="event-name">일정 이름</label><input id="event-name" name="title" value="${escapeHtml(editingEvent?.title || "")}" required maxlength="80" placeholder="예: 수행평가 준비"></div><div class="field full"><label for="event-date">날짜</label><input id="event-date" name="date" type="date" required value="${escapeHtml(editingEvent?.date || selectedDate)}"></div><div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button class="button primary" type="submit">일정 저장</button></div></div></form></div></dialog>
-    <dialog id="profile-dialog" aria-labelledby="profile-title"><div class="dialog-inner"><div class="dialog-header"><h2 id="profile-title">학생 정보</h2><button type="button" class="icon-button" data-action="close-dialog" aria-label="닫기" title="닫기">${icon("x")}</button></div><form id="profile-form" class="field-grid"><div class="field full"><label for="profile-name">이름</label><input id="profile-name" name="name" required maxlength="20" value="${escapeHtml(state.profile.name)}"></div><div class="field"><label for="profile-grade">학년</label><select id="profile-grade" name="grade" ${cloudStore && state.profile.grade ? "disabled" : ""}>${[1, 2, 3].map((n) => `<option value="${n}" ${state.profile.grade === n ? "selected" : ""}>${n}학년</option>`).join("")}</select></div><div class="field"><label for="profile-classroom">반</label><input id="profile-classroom" name="classroom" ${cloudStore && state.profile.classroom ? "disabled" : ""} type="number" min="1" max="30" required value="${state.profile.classroom}"></div><div class="field full"><span class="field-label">등록된 동아리</span><p>${state.profile.clubs.length ? state.profile.clubs.map(escapeHtml).join(", ") : "소속 없음"}</p></div><div class="field full"><div class="dialog-actions"><button type="button" class="button" data-action="close-dialog">취소</button><button type="submit" class="button primary">저장</button></div></div></form></div></dialog>`;
+    ${renderProfileDialog()}${renderImportanceDialog()}`;
 }
 
 function render() {
@@ -320,6 +365,7 @@ function render() {
   if (activeDialog?.type === "detail") root.querySelector("#detail-dialog")?.showModal();
   if (activeDialog?.type === "event") root.querySelector("#event-dialog")?.showModal();
   if (activeDialog?.type === "profile") root.querySelector("#profile-dialog")?.showModal();
+  if (activeDialog?.type === "importance") root.querySelector("#importance-dialog")?.showModal();
 }
 
 function closeDialog() {
@@ -355,6 +401,7 @@ root.addEventListener("click", async (event) => {
   if (action === "add-event") { activeDialog = { type: "event" }; render(); return; }
   if (action === "edit-event") { activeDialog = { type: "event", id, kind: button.dataset.kind }; render(); return; }
   if (action === "profile") { activeDialog = { type: "profile" }; render(); return; }
+  if (action === "importance") { activeDialog = { type: "importance" }; render(); return; }
   if (action === "close-dialog") { closeDialog(); return; }
   if (action === "save-planner") {
     const next = structuredClone(state);
@@ -417,6 +464,8 @@ root.addEventListener("input", (event) => {
 root.addEventListener("change", async (event) => {
   if (cloudSaving) return;
   const target = event.target;
+  if (target.matches("[data-importance-level]")) { target.closest(".importance-setting").dataset.importance = target.value; return; }
+  if (target.matches("[data-notice-order]")) { noticeOrder = target.value; render(); return; }
   if (target.name === "audienceScope") {
     root.querySelector("#audience-groups").disabled = target.value === "all";
     return;
@@ -455,6 +504,20 @@ root.addEventListener("submit", async (event) => {
   if (cloudSaving) return;
   const form = event.target;
   const data = new FormData(form);
+  if (form.id === "importance-form") {
+    const entries = [...form.querySelectorAll("[data-importance-subject]")].map(input => [input.dataset.importanceSubject,Number(input.value)]);
+    const newSubject = String(data.get("newSubject") || "").trim();
+    if (newSubject) entries.push([newSubject,Number(data.get("newLevel"))]);
+    const raw = Object.fromEntries(entries);
+    const preferences = PlannerModel.normalizeSubjectImportance(raw);
+    if (Object.keys(raw).length !== Object.keys(preferences).length) { showToast("과목은 25자 이내, 최대 100개까지 입력하고 중요도는 1~5로 선택하세요."); return; }
+    const next = { ...state, subjectImportance: preferences };
+    if (cloudStore && state.schemaVersion < 3) {
+      try { localStorage.setItem(`${accountStorageKey}:importance`,JSON.stringify(preferences)); state = next; }
+      catch { showToast("중요도를 저장하지 못했습니다. 브라우저 저장 공간을 확인하세요."); return; }
+    } else if (!await persist(next)) return;
+    activeDialog = null; render(); showToast("내 과목별 중요도를 저장했습니다."); return;
+  }
   if (form.id === "group-form") {
     const kind = String(data.get("kind"));
     const name = String(data.get("name")).trim();
@@ -520,13 +583,24 @@ root.addEventListener("submit", async (event) => {
   }
   if (form.id === "profile-form") {
     const next = structuredClone(state);
+    const editable = canEditSchool();
+    const initializing = !state.profile.grade && !state.profile.classroom;
     next.profile = {
       ...next.profile,
-      name: String(data.get("name")).trim(), grade: cloudStore && state.profile.grade ? state.profile.grade : Number(data.get("grade")),
-      classroom: cloudStore && state.profile.classroom ? state.profile.classroom : Number(data.get("classroom")),
+      name: String(data.get("name")).trim(),
+      grade: editable || initializing ? Number(data.get("grade")) : state.profile.grade,
+      classroom: editable || initializing ? Number(data.get("classroom")) : state.profile.classroom,
+      clubs: editable ? [...new Set(data.getAll("clubs"))] : state.profile.clubs,
     };
-    activeDialog = null;
-    persist(next, "학생 정보를 저장했습니다.");
+    if (!next.profile.name || next.profile.name.length > 40) { showToast("이름은 1~40자로 입력해 주세요."); return; }
+    try { PlannerModel.validateSchool(next.profile); } catch(error) { showToast(error.message); return; }
+    const changed = PlannerModel.schoolChanged(state.profile,next.profile);
+    if (changed && !schoolStatus().remaining) { showToast("올해 소속 정보 변경 횟수를 모두 사용했습니다."); return; }
+    if (changed && !cloudStore) {
+      next.profile.schoolChangeYear = schoolStatus().year;
+      next.profile.schoolChangeCount = schoolStatus().used + (initializing ? 0 : 1);
+    }
+    if (await persist(next,changed ? "소속 정보를 변경했습니다." : "학생 정보를 저장했습니다.")) { activeDialog = null; render(); }
   }
 });
 
@@ -534,7 +608,7 @@ window.addEventListener("planner-login", (event) => {
   const { user, profile, cloudState } = event.detail;
   accountStorageKey = `${STORAGE_KEY}:${user.id}`;
   let stored;
-  if (cloudState) state = cloudState;
+  if (cloudState) state = withPersonalImportance(cloudState);
   else {
     try { stored = JSON.parse(localStorage.getItem(accountStorageKey)); state = restoreState(stored); }
     catch { state = createInitialState(); }
@@ -549,6 +623,7 @@ window.addEventListener("planner-login", (event) => {
   search = "";
   filter = "all";
   subjectFilter = "all";
+  noticeOrder = "deadline";
   if (cloudState && mode === "student" && !state.profile.grade && !state.profile.classroom) activeDialog = { type: "profile" };
   render();
 });

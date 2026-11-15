@@ -76,6 +76,39 @@ function visibleNotices(state) {
   ));
 }
 
+function normalizeSubjectImportance(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return Object.fromEntries(Object.entries(raw).filter(([subject, value]) =>
+    subject.trim().length > 0 && subject.length <= 25 && Number.isInteger(value) && value >= 1 && value <= 5
+  ).slice(0, 100));
+}
+
+function importanceFor(subject, preferences = {}) {
+  const value = Object.hasOwn(preferences, subject) ? preferences[subject] : 3;
+  return Number.isInteger(value) && value >= 1 && value <= 5 ? value : 3;
+}
+
+function sortByImportance(notices, preferences = {}) {
+  return sortByDeadline(notices).sort((a, b) => importanceFor(b.subject, preferences) - importanceFor(a.subject, preferences));
+}
+
+function schoolChangeStatus(profile, year = new Date().getFullYear()) {
+  const used = Number(profile.schoolChangeYear) === Number(year) ? Math.max(0, Math.min(2, Number(profile.schoolChangeCount) || 0)) : 0;
+  return { year: Number(year), used, remaining: 2 - used };
+}
+
+function schoolChanged(before, after) {
+  return Number(before.grade) !== Number(after.grade) || Number(before.classroom) !== Number(after.classroom)
+    || [...(before.clubs || [])].sort().join("\n") !== [...(after.clubs || [])].sort().join("\n");
+}
+
+function validateSchool(profile) {
+  if (![1, 2, 3].includes(profile.grade) || !Number.isInteger(profile.classroom) || profile.classroom < 1 || profile.classroom > 30)
+    throw new Error("학년과 반을 확인해 주세요. 반은 1~30 사이로 입력하세요.");
+  if (!Array.isArray(profile.clubs) || profile.clubs.length > 12 || profile.clubs.some(club => !CLUBS.includes(club)))
+    throw new Error("목록에 있는 동아리를 선택해 주세요.");
+}
+
 function plannerEvents(state) {
   const excluded = state.excludedNoticeIds || [];
   const overrides = state.noticePlannerOverrides || [];
@@ -130,6 +163,7 @@ function createInitialState(now = new Date()) {
     personalEvents: [],
     excludedNoticeIds: [],
     noticePlannerOverrides: [],
+    subjectImportance: {},
   };
 }
 
@@ -147,6 +181,9 @@ function restoreState(raw) {
     personalEvents: Array.isArray(raw.personalEvents) ? raw.personalEvents : [],
     excludedNoticeIds: Array.isArray(raw.excludedNoticeIds) ? raw.excludedNoticeIds : [],
     noticePlannerOverrides: Array.isArray(raw.noticePlannerOverrides) ? raw.noticePlannerOverrides : [],
+    subjectImportance: normalizeSubjectImportance(raw.subjectImportance),
+    schemaVersion: raw.schemaVersion,
+    schoolYear: raw.schoolYear,
   };
 }
 
@@ -162,6 +199,7 @@ function applySignupProfile(profile, metadata = {}) {
 return {
   STORAGE_KEY, CLUBS, clubCheckboxes, dateKey, offsetDate, daysUntil, matchesAudience, audienceIds, schoolGroups, mergeSchoolGroups,
   sortByDeadline, visibleNotices, createInitialState, restoreState, applySignupProfile, plannerEvents,
+  normalizeSubjectImportance, importanceFor, sortByImportance, schoolChangeStatus, schoolChanged, validateSchool,
 };
 })();
 

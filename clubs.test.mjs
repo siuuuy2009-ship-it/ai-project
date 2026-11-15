@@ -30,10 +30,10 @@ test("school club choices contain exactly the supplied twelve names", () => {
   assert.match(html, /value="CC" checked/);
 });
 
-test("login restores signup clubs and profile editing cannot replace them", async () => {
+test("login restores signup clubs and profile editing changes them within the annual allowance", async () => {
   const rootHandlers = {};
   const windowHandlers = {};
-  const root = { innerHTML: "", addEventListener: (name, fn) => { rootHandlers[name] = fn; } };
+  const root = { innerHTML: "", querySelector: () => null, addEventListener: (name, fn) => { rootHandlers[name] = fn; } };
   const saved = model.createInitialState();
   saved.profile.clubs = ["블리츠"];
   const storage = new Map([[`${model.STORAGE_KEY}:test-user`, JSON.stringify(saved)]]);
@@ -42,16 +42,18 @@ test("login restores signup clubs and profile editing cannot replace them", asyn
     localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) },
     document: { querySelector: () => root },
     window: { addEventListener: (name, fn) => { windowHandlers[name] = fn; } },
-    FormData: class { get(name) { return ({ name: "학생", grade: "2", classroom: "2", clubs: "시그마" })[name]; } },
+    FormData: class { get(name) { return ({ name: "학생", grade: "2", classroom: "2" })[name]; } getAll(name) { return name === "clubs" ? ["시그마"] : []; } },
   });
   vm.runInContext(readFileSync(new URL("./app.js", import.meta.url), "utf8"), context);
   vm.runInContext("showToast = () => {};", context);
   windowHandlers["planner-login"]({ detail: { user: { id: "test-user", user_metadata: { clubs: ["파이", "CC"] } }, profile: { role: "student" }, loginClub: "시그마" } });
   assert.deepEqual([...vm.runInContext("state.profile.clubs", context)], ["파이", "CC"]);
-  assert.doesNotMatch(root.innerHTML, /name="clubs"/);
-  assert.match(root.innerHTML, /등록된 동아리/);
+  assert.match(root.innerHTML, /name="clubs"/);
+  assert.match(root.innerHTML, /남은 횟수 2회/);
   await rootHandlers.submit({ preventDefault() {}, target: { id: "profile-form" } });
-  assert.deepEqual(JSON.parse(storage.get(`${model.STORAGE_KEY}:test-user`)).profile.clubs, ["파이", "CC"]);
+  const edited = JSON.parse(storage.get(`${model.STORAGE_KEY}:test-user`)).profile;
+  assert.deepEqual(edited.clubs, ["시그마"]);
+  assert.equal(edited.schoolChangeCount,1);
   windowHandlers["planner-login"]({ detail: { user: { id: "old-user", user_metadata: {} }, profile: { role: "student" } } });
   assert.deepEqual([...vm.runInContext("state.profile.clubs", context)], []);
 });
