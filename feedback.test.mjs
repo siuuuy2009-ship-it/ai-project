@@ -88,11 +88,14 @@ test('manual refresh reports unchanged, changed and failure; duplicate requests 
 test('personal importance saves, renders colors in feed/planner, survives reload, and separates accounts',async()=>{
  const f=fixture();
  f.windows['planner-login']({detail:{user:{id:'student-a',user_metadata:{}},profile:{role:'student'}}});
+ assert.equal(f.run('filter'),'soon');
+ assert.equal(f.run('noticeOrder'),'urgency');
+ assert.ok(f.run('filteredNotices().every(n=>n.type==="assignment" && daysUntil(n.dueDate)>=0 && daysUntil(n.dueDate)<=3 && !state.completedNoticeIds.includes(n.id))'));
  await f.submit('importance-form',{newSubject:'수학',newLevel:'5'},[{dataset:{importanceSubject:'국어'},value:'1'}]);
  const saved=JSON.parse(f.storage.get(`${model.STORAGE_KEY}:student-a`));
  assert.deepEqual(saved.subjectImportance,{'국어':1,'수학':5});
  assert.match(f.run('renderNoticeRow(state.notices.find(n=>n.subject==="수학"))'),/data-importance="5"/);
- f.run('noticeOrder="importance"');
+ f.run('noticeOrder="importance"; filter="all"');
  assert.equal(f.run('filteredNotices()[0].subject'),'수학');
  f.run('state=restoreState(JSON.parse(localStorage.getItem(accountStorageKey)))');
  assert.equal(f.run('state.subjectImportance["국어"]'),1);

@@ -7,6 +7,8 @@
   background: var(--page);
   --page: #f7f8f7;
   --surface: #fff;
+  --deadline-ink: #6540a5;
+  --deadline-soft: #f1eafa;
   --ink: #213035;
   --muted: #68777b;
   --line: #e1e7e5;
@@ -26,6 +28,7 @@
   --teal: #57d4c8; --teal-soft: #193e3a;
   --amber: #f5c273; --amber-soft: #403222;
   --red: #ffaba2; --red-soft: #432a2a;
+  --deadline-ink: #d5bbff; --deadline-soft: #342647;
 }
 
 * { box-sizing: border-box; }
@@ -157,10 +160,9 @@ h3 { margin: 0; font-size: 14px; }
 .notice-body-preview { color: var(--muted); margin: 6px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
 .notice-actions { display: flex; align-items: center; gap: 7px; padding-top: 1px; }
 .deadline { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; color: #526b6c; font-size: 11px; white-space: nowrap; }
-.deadline.soon { color: var(--amber); }
-.deadline.urgent, .deadline.today, .deadline.overdue { color: #b42318; }
-.deadline-alert .notice-title, .deadline-alert .agenda-title { color: #b42318; }
-.deadline-alert .agenda-accent { background: #b42318; }
+.deadline.soon { color: var(--deadline-ink); }
+.deadline.urgent, .deadline.today, .deadline.overdue { color: var(--deadline-ink); background: var(--deadline-soft); border: 1px solid var(--deadline-ink); border-radius: 999px; padding: 4px 8px; }
+.deadline.overdue { border-style: dashed; }
 .deadline svg { width: 14px; height: 14px; }
 .empty-state { text-align: center; display: grid; place-content: center; gap: 9px; min-height: 270px; color: var(--muted); }
 .empty-state svg { margin: auto; width: 27px; height: 27px; color: #9caeaf; }
@@ -305,20 +307,20 @@ button, label, h1, h2, h3, .notice-title, .agenda-title { word-break: keep-all; 
 .notice-body-preview { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.7; font-size: 13px; }
 .dialog-body { overflow-wrap: anywhere; }
 .page-actions, .section-heading { flex-wrap: wrap; }
-.deadline-reminders { margin-bottom: 28px; border: 1px solid var(--line); border-left: 4px solid var(--red); border-radius: 8px; padding: 16px 20px; background: var(--surface); }
+.deadline-reminders { margin-bottom: 28px; border: 1px solid var(--line); border-left: 4px solid var(--deadline-ink); border-radius: 8px; padding: 16px 20px; background: var(--surface); }
 .deadline-reminders h2 { font-size: 17px; }
-.deadline-reminders h2 span { color: var(--red); margin-left: 6px; }
+.deadline-reminders h2 span { color: var(--deadline-ink); margin-left: 6px; }
 .deadline-reminders p { font-size: 12px; color: var(--muted); margin: 6px 0; }
 .deadline-reminders ul { list-style: none; margin: 12px 0 0; padding: 0; max-height: 240px; overflow-y: auto; }
 .deadline-reminders button { width: 100%; display: flex; gap: 12px; padding: 10px 0; border: 0; border-top: 1px solid var(--line); text-align: left; background: transparent; color: var(--ink); }
-.deadline-reminders strong { color: var(--red); white-space: nowrap; }
+.deadline-reminders strong { color: var(--deadline-ink); white-space: nowrap; }
 .deadline-reminders button span { min-width: 0; }
 :root[data-theme="dark"] :is(.topbar, .button, .search-box, .plain-select, .importance-setting select, .field input, .field select, .field textarea, dialog) { background: var(--surface); color: var(--ink); border-color: var(--line); }
 :root[data-theme="dark"] :is(.button.primary, .calendar-day.selected) { background: var(--teal); color: #102c29; }
 :root[data-theme="dark"] :is(.importance-setting, .button:hover, .calendar-day:hover) { background: var(--soft); }
 :root[data-theme="dark"] :is(.field label, .dialog-body, .calendar-day, .search-box input) { color: var(--ink); }
 :root[data-theme="dark"] :is(.calendar-day.other-month, .icon-button, .deadline) { color: var(--muted); }
-:root[data-theme="dark"] :is(.deadline.urgent, .deadline.today, .deadline.overdue, .deadline-alert .notice-title, .deadline-alert .agenda-title) { color: var(--red); }
+:root[data-theme="dark"] :is(.deadline.soon, .deadline.urgent, .deadline.today, .deadline.overdue) { color: var(--deadline-ink); }
 :root[data-theme="dark"] :is(.school-quota, .badge) { color: var(--teal); }
 @media (max-width: 1150px) {
   .dashboard-grid, .planner-grid { grid-template-columns: minmax(0, 1fr); }

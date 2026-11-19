@@ -14,7 +14,7 @@ try {
 
 let mode = "student";
 let view = "feed";
-let filter = "all";
+let filter = "soon";
 let subjectFilter = "all";
 let search = "";
 let selectedDate = dateKey();
@@ -79,7 +79,7 @@ function dueInfo(key) {
   if (days === null) return { text: "마감일 없음", className: "" };
   if (days < 0) return { text: `${Math.abs(days)}일 지남`, className: "overdue" };
   if (days === 0) return { text: "오늘 마감", className: "today" };
-  if (days === 1) return { text: "D-1", className: "urgent" };
+  if (days === 1) return { text: "내일 마감", className: "urgent" };
   if (days <= 3) return { text: `D-${days}`, className: "soon" };
   return { text: `D-${days}`, className: "" };
 }
@@ -220,7 +220,7 @@ function filteredNotices() {
   const notices = visibleNotices(state).filter((notice) => {
     if (filter === "notice" && notice.type !== "notice") return false;
     if (filter === "assignment" && notice.type !== "assignment") return false;
-    if (filter === "soon" && (notice.type !== "assignment" || daysUntil(notice.dueDate) > 3 || daysUntil(notice.dueDate) < 0 || !notice.dueDate)) return false;
+    if (filter === "soon" && (notice.type !== "assignment" || daysUntil(notice.dueDate) > 3 || daysUntil(notice.dueDate) < 0 || !notice.dueDate || state.completedNoticeIds.includes(notice.id))) return false;
     if (subjectFilter !== "all" && notice.subject !== subjectFilter) return false;
     return !search || `${notice.title} ${notice.body} ${notice.subject}`.toLowerCase().includes(search.toLowerCase());
   });
@@ -275,7 +275,7 @@ function renderAgenda(date) {
   if (!events.length) return `<div class="empty-state" style="min-height:135px"><span>${icon("calendar-x-2")}</span><strong>일정이 없습니다</strong><p>선택한 날짜에 등록된 일정이 없습니다.</p></div>`;
   return `<div class="agenda-list">${events.map((event) => `<div class="agenda-item ${!event.done && ["urgent", "today", "overdue"].includes(dueInfo(event.date).className) ? "deadline-alert" : ""}">
     <span class="agenda-accent ${event.kind === "personal" ? "personal" : ""}"></span>
-    <div style="min-width:0;flex:1"><div class="agenda-title" style="${event.done ? "text-decoration:line-through;color:#8a9898" : ""}">${escapeHtml(event.title)}</div><div class="agenda-meta">${event.kind === "personal" ? "개인 일정" : `${escapeHtml(event.subject)} ${importanceBadge(event.subject)}`}</div></div>
+    <div style="min-width:0;flex:1"><div class="agenda-title" style="${event.done ? "text-decoration:line-through;color:#8a9898" : ""}">${escapeHtml(event.title)}</div>${!event.done ? `<span class="deadline ${dueInfo(event.date).className}">${icon("clock-3")}${dueInfo(event.date).text}</span>` : ""}<div class="agenda-meta">${event.kind === "personal" ? "개인 일정" : `${escapeHtml(event.subject)} ${importanceBadge(event.subject)}`}</div></div>
     <input class="check" type="checkbox" data-${event.kind === "personal" ? "complete-event" : "complete-notice"}="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)} 완료" ${event.done ? "checked" : ""}>
     <button type="button" class="icon-button" data-action="edit-event" data-kind="${event.kind}" data-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)} 일정 수정" title="일정 수정">${icon("pencil")}</button>
     <button type="button" class="icon-button" data-action="${event.kind === "personal" ? "delete-event" : "remove-planner-notice"}" data-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(event.title)} ${event.kind === "personal" ? "일정 삭제" : "플래너에서 제거"}" title="${event.kind === "personal" ? "일정 삭제" : "플래너에서 제거 (원본 공지 유지)"}">${icon("trash-2")}</button>
@@ -293,8 +293,8 @@ function renderFeed() {
         <div class="filter-row"><div class="tabs" role="group" aria-label="공지 필터">${tabs.map(([id, label]) => `<button type="button" class="tab ${filter === id ? "active" : ""}" data-action="filter" data-filter="${id}" aria-pressed="${filter === id}">${label}</button>`).join("")}</div>
           <div class="filter-tools"><label class="search-box">${icon("search")}<input type="search" data-search placeholder="제목 검색" value="${escapeHtml(search)}" aria-label="공지 검색"></label><select class="plain-select" data-subject-filter aria-label="과목 선택"><option value="all">모든 과목</option>${subjects.map((subject) => `<option value="${escapeHtml(subject)}" ${subjectFilter === subject ? "selected" : ""}>${escapeHtml(subject)}</option>`).join("")}</select></div>
         </div>
-        <div class="notice-sort"><label for="notice-order">정렬</label><select id="notice-order" class="plain-select" data-notice-order><option value="urgency" ${noticeOrder === "urgency" ? "selected" : ""}>마감 우선순위</option><option value="deadline" ${noticeOrder === "deadline" ? "selected" : ""}>마감일순</option><option value="importance" ${noticeOrder === "importance" ? "selected" : ""}>중요도 높은 순</option></select><span class="field-help">높음 <span class="importance-scale" aria-label="5 빨강, 4 주황, 3 노랑, 2 초록, 1 파랑">${[5,4,3,2,1].map(n => `<span class="importance-tag" data-importance="${n}">${n}</span>`).join("")}</span> 낮음</span></div>
-        <div class="notice-list">${notices.length ? notices.map(renderNoticeRow).join("") : `<div class="empty-state">${icon("inbox")}<strong>표시할 공지가 없습니다</strong><p>검색어나 필터를 바꿔 보세요.</p></div>`}</div>
+        <div class="notice-sort"><label for="notice-order">정렬</label><select id="notice-order" class="plain-select" data-notice-order><option value="urgency" ${noticeOrder === "urgency" ? "selected" : ""}>마감 우선순위</option><option value="deadline" ${noticeOrder === "deadline" ? "selected" : ""}>마감일순</option><option value="importance" ${noticeOrder === "importance" ? "selected" : ""}>중요도 높은 순</option></select><span class="field-help">내 중요도: 높음 <span class="importance-scale" aria-label="5 빨강, 4 주황, 3 노랑, 2 초록, 1 파랑">${[5,4,3,2,1].map(n => `<span class="importance-tag" data-importance="${n}">${n}</span>`).join("")}</span> 낮음 · 시계 표시는 남은 마감 시간</span></div>
+        <div class="notice-list">${notices.length ? notices.map(renderNoticeRow).join("") : `<div class="empty-state">${icon("inbox")}<strong>${filter === "soon" ? "3일 이내 마감인 미완료 과제가 없습니다" : "표시할 공지가 없습니다"}</strong><p>${filter === "soon" ? "전체 탭에서 다른 공지와 과제를 볼 수 있습니다." : "검색어나 필터를 바꿔 보세요."}</p></div>`}</div>
       </section>
       <aside class="aside-pane" aria-label="플래너 미리보기">
         <div class="section-heading"><h2>나의 플래너</h2><button type="button" class="icon-button" data-action="nav" data-view="planner" aria-label="플래너 열기" title="플래너 열기">${icon("arrow-up-right")}</button></div>
@@ -423,7 +423,7 @@ root.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const { action, id } = button.dataset;
-  if (action === "nav") { view = button.dataset.view; activeDialog = null; render(); return; }
+  if (action === "nav") { view = button.dataset.view; if (view === "feed") { filter = "soon"; noticeOrder = "urgency"; search = ""; subjectFilter = "all"; } activeDialog = null; render(); return; }
   if (action === "logout") { window.dispatchEvent(new Event("planner-logout")); return; }
   if (action === "cloud-refresh") { await refreshCloud(true); return; }
   if (action === "filter") { filter = button.dataset.filter; render(); return; }
@@ -664,7 +664,7 @@ window.addEventListener("planner-login", (event) => {
   activeDialog = null;
   editingNoticeId = null;
   search = "";
-  filter = "all";
+  filter = "soon";
   subjectFilter = "all";
   noticeOrder = "urgency";
   if (deadlineTimer) window.clearInterval(deadlineTimer);
