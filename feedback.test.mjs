@@ -85,6 +85,33 @@ test('manual refresh reports unchanged, changed and failure; duplicate requests 
  assert.match(f.context.lastToast,/확인하고 있습니다/);
 });
 
+test('failed calendar save keeps its dialog and draft, and a retry saves once',async()=>{
+ const f=fixture();
+ f.run('activeDialog={type:"event"}; cloudStore={save:async()=>{throw new Error("연결 실패")},load:async()=>structuredClone(state)};');
+ f.root.innerHTML='unsaved form contents';
+ await f.submit('event-form',{title:'연결 복구 후 저장',date:'2026-11-20'});
+ assert.equal(f.run('activeDialog.type'),'event');
+ assert.equal(f.root.innerHTML,'unsaved form contents');
+ assert.equal(f.context.lastToast,'연결 실패');
+ assert.equal(f.run('state.personalEvents.length'),0);
+ assert.equal(f.root.inert,false);
+ f.run('cloudStore=null');
+ await f.submit('event-form',{title:'연결 복구 후 저장',date:'2026-11-20'});
+ assert.equal(f.run('state.personalEvents.length'),1);
+ assert.equal(f.run('activeDialog'),null);
+});
+
+test('teacher refresh preserves an unsaved notice and login resets stale calendar selection',async()=>{
+ const f=fixture();
+ f.run('mode="teacher"; teacherDraftDirty=true; cloudStore={load:async()=>{throw new Error("must not load")}};');
+ await f.run('refreshCloud(true)');
+ assert.match(f.context.lastToast,/작성 중인 내용/);
+ f.run('calendarMonth="2020-01";selectedDate="2020-01-01";');
+ f.windows['planner-login']({detail:{user:{id:'student-a',user_metadata:{}},profile:{role:'student'}}});
+ assert.equal(f.run('selectedDate'),model.dateKey());
+ assert.equal(f.run('teacherDraftDirty'),false);
+});
+
 test('personal importance saves, renders colors in feed/planner, survives reload, and separates accounts',async()=>{
  const f=fixture();
  f.windows['planner-login']({detail:{user:{id:'student-a',user_metadata:{}},profile:{role:'student'}}});

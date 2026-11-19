@@ -29,6 +29,7 @@ let refreshTimer = null;
 let refreshing = false;
 let cloudUserId = null;
 let noticeOrder = "deadline";
+let teacherDraftDirty = false;
 let deadlineTimer = null;
 let themeChoice = "light";
 try { const saved = localStorage.getItem("planner-theme"); if (["light", "dark"].includes(saved)) themeChoice = saved; } catch { /* Use light mode if storage is unavailable. */ }
@@ -113,7 +114,7 @@ async function persistCloud(next, message) {
     return true;
   } catch (error) {
     if (store === cloudStore) {
-      try { state = withPersonalImportance(await store.load()); render(); } catch { /* Keep the last confirmed state visible. */ }
+      try { state = withPersonalImportance(await store.load()); } catch { /* Keep the last confirmed state visible. */ }
       showToast(error.message);
     }
     return false;
@@ -121,6 +122,7 @@ async function persistCloud(next, message) {
 }
 
 async function refreshCloud(force = false) {
+  if (mode === "teacher" && teacherDraftDirty) { if (force) showToast("작성 중인 내용이 있습니다. 등록하거나 수정을 취소한 뒤 새 소식을 확인해 주세요."); return; }
   if (!cloudStore) { if (force) showToast("로그인한 뒤 새 소식을 확인해 주세요."); return; }
   if (cloudSaving || refreshing || activeDialog) {
     if (force) showToast(cloudSaving ? "저장이 끝난 뒤 다시 확인해 주세요." : refreshing ? "새 소식을 확인하고 있습니다." : "열린 창을 닫은 뒤 다시 확인해 주세요.");
@@ -458,8 +460,8 @@ root.addEventListener("click", async (event) => {
     if (confirm("이 그룹을 삭제할까요?")) { const next = structuredClone(state); next.groups = next.groups.filter((group) => group.id !== id); persist(next, "그룹을 삭제했습니다."); }
     return;
   }
-  if (action === "edit-notice") { editingNoticeId = id; render(); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
-  if (action === "cancel-edit") { editingNoticeId = null; render(); return; }
+  if (action === "edit-notice") { editingNoticeId = id; teacherDraftDirty = false; render(); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+  if (action === "cancel-edit") { editingNoticeId = null; teacherDraftDirty = false; render(); return; }
   if (action === "delete-notice") {
     if (confirm("이 공지를 삭제할까요?")) {
       const next = structuredClone(state);
@@ -489,6 +491,7 @@ root.addEventListener("click", async (event) => {
 });
 
 root.addEventListener("input", (event) => {
+  if (event.target.closest?.("#notice-form")) teacherDraftDirty = true;
   if (!event.target.matches("[data-search]")) return;
   search = event.target.value;
   const position = event.target.selectionStart;
@@ -499,6 +502,7 @@ root.addEventListener("input", (event) => {
 });
 
 root.addEventListener("change", async (event) => {
+  if (event.target.closest?.("#notice-form")) teacherDraftDirty = true;
   if (event.target.matches("[data-theme-choice]")) {
     if (!["light", "dark"].includes(event.target.value)) return;
     themeChoice = event.target.value; applyTheme();
@@ -603,7 +607,7 @@ root.addEventListener("submit", async (event) => {
     if (original) next.notices = next.notices.map((item) => item.id === original.id ? notice : item);
     else next.notices.unshift(notice);
     const message = original ? "공지를 수정했습니다." : "공지를 등록했습니다.";
-    if (await persist(next, message)) { editingNoticeId = null; render(); }
+    if (await persist(next, message)) { editingNoticeId = null; teacherDraftDirty = false; render(); }
     return;
   }
   if (form.id === "event-form") {
@@ -618,10 +622,12 @@ root.addEventListener("submit", async (event) => {
     } else if (editing) {
       next.personalEvents = next.personalEvents.map(item => item.id === editing ? { ...item, title, date } : item);
     } else next.personalEvents.push({ id: newId(), title, date, done: false });
-    selectedDate = date;
-    calendarMonth = date.slice(0, 7);
-    activeDialog = null;
-    persist(next, editing ? "일정을 수정했습니다. 원본 과제는 유지됩니다." : "일정을 추가했습니다.");
+    if (await persist(next, editing ? "일정을 수정했습니다. 원본 과제는 유지됩니다." : "일정을 추가했습니다.")) {
+      selectedDate = date;
+      calendarMonth = date.slice(0, 7);
+      activeDialog = null;
+      render();
+    }
     return;
   }
   if (form.id === "profile-form") {
@@ -663,6 +669,9 @@ window.addEventListener("planner-login", (event) => {
   view = mode === "teacher" ? "teacher" : "feed";
   activeDialog = null;
   editingNoticeId = null;
+  teacherDraftDirty = false;
+  selectedDate = dateKey();
+  calendarMonth = selectedDate.slice(0, 7);
   search = "";
   filter = "soon";
   subjectFilter = "all";
