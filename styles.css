@@ -3,8 +3,10 @@
   font-family: "Malgun Gothic", "Apple SD Gothic Neo", Arial, sans-serif;
   font-size: 14px;
   letter-spacing: 0;
-  color: #213035;
-  background: #f7f8f7;
+  color: var(--ink);
+  background: var(--page);
+  --page: #f7f8f7;
+  --surface: #fff;
   --ink: #213035;
   --muted: #68777b;
   --line: #e1e7e5;
@@ -15,6 +17,15 @@
   --amber-soft: #fff2dc;
   --red: #ad5148;
   --red-soft: #fff0ec;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #131c20; --surface: #1d292e; --ink: #e4ecef;
+  --muted: #b0bfc5; --line: #42545d; --soft: #26363d;
+  --teal: #57d4c8; --teal-soft: #193e3a;
+  --amber: #f5c273; --amber-soft: #403222;
+  --red: #ffaba2; --red-soft: #432a2a;
 }
 
 * { box-sizing: border-box; }
@@ -269,4 +280,54 @@ dialog::backdrop { background: #13292a70; }
   .teacher-left { border-right: 0; border-bottom: 1px solid var(--line); padding: 0 0 22px; }
   .teacher-table th:nth-child(3), .teacher-table td:nth-child(3) { display: none; }
   .planner-calendar .calendar-day { height: 54px; }
+}
+
+/* Keep Korean phrases readable instead of squeezing them into single-character columns. */
+body { writing-mode: horizontal-tb; line-height: 1.6; }
+button, label, h1, h2, h3, .notice-title, .agenda-title { word-break: keep-all; overflow-wrap: anywhere; }
+.topbar { height: auto; min-height: 70px; padding-top: 12px; padding-bottom: 12px; flex-wrap: wrap; }
+.topbar-right { flex-wrap: wrap; }
+.topbar-left { flex-shrink: 0; }
+.theme-control { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; }
+.theme-control select { min-height: 36px; padding: 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); }
+.refresh-button { font-size: 12px; }
+.refresh-button[aria-busy="true"] svg { animation: refresh-spin 1s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .refresh-button[aria-busy="true"] svg { animation: none; } }
+.notice-title, .agenda-title { font-size: 15px; line-height: 1.65; }
+.notice-body-preview { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.7; font-size: 13px; }
+.dialog-body { overflow-wrap: anywhere; }
+.page-actions, .section-heading { flex-wrap: wrap; }
+.deadline-reminders { margin-bottom: 28px; border: 1px solid var(--line); border-left: 4px solid var(--red); border-radius: 8px; padding: 16px 20px; background: var(--surface); }
+.deadline-reminders h2 { font-size: 17px; }
+.deadline-reminders h2 span { color: var(--red); margin-left: 6px; }
+.deadline-reminders p { font-size: 12px; color: var(--muted); margin: 6px 0; }
+.deadline-reminders ul { list-style: none; margin: 12px 0 0; padding: 0; max-height: 240px; overflow-y: auto; }
+.deadline-reminders button { width: 100%; display: flex; gap: 12px; padding: 10px 0; border: 0; border-top: 1px solid var(--line); text-align: left; background: transparent; color: var(--ink); }
+.deadline-reminders strong { color: var(--red); white-space: nowrap; }
+.deadline-reminders button span { min-width: 0; }
+:root[data-theme="dark"] :is(.topbar, .button, .search-box, .plain-select, .importance-setting select, .field input, .field select, .field textarea, dialog) { background: var(--surface); color: var(--ink); border-color: var(--line); }
+:root[data-theme="dark"] :is(.button.primary, .calendar-day.selected) { background: var(--teal); color: #102c29; }
+:root[data-theme="dark"] :is(.importance-setting, .button:hover, .calendar-day:hover) { background: var(--soft); }
+:root[data-theme="dark"] :is(.field label, .dialog-body, .calendar-day, .search-box input) { color: var(--ink); }
+:root[data-theme="dark"] :is(.calendar-day.other-month, .icon-button, .deadline) { color: var(--muted); }
+:root[data-theme="dark"] :is(.deadline.urgent, .deadline.today, .deadline.overdue, .deadline-alert .notice-title, .deadline-alert .agenda-title) { color: var(--red); }
+:root[data-theme="dark"] :is(.school-quota, .badge) { color: var(--teal); }
+@media (max-width: 1150px) {
+  .dashboard-grid, .planner-grid { grid-template-columns: minmax(0, 1fr); }
+  .aside-pane, .planner-side { border-left: 0; border-top: 1px solid var(--line); padding: 24px 0 0; max-width: none; }
+  .teacher-layout { grid-template-columns: minmax(0, 1fr); }
+  .teacher-left { border-right: 0; padding-right: 0; }
+}
+@media (max-width: 650px) {
+  .topbar-right { gap: 6px; width: 100%; justify-content: space-between; }
+  .topbar-right .avatar { display: none; }
+  .page-heading { flex-wrap: wrap; }
+  .notice-meta { gap: 6px 8px; }
+  .field-grid, .importance-setting { grid-template-columns: minmax(0, 1fr); }
+  .filter-tools { flex-wrap: wrap; }
+  .tabs { gap: 14px; flex-wrap: wrap; }
+  .deadline-reminders { padding: 12px; }
+  .side-link { width: auto; gap: 6px; }
+  .side-link span { display: inline; font-size: 12px; }
 }

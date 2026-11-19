@@ -76,6 +76,23 @@ function visibleNotices(state) {
   ));
 }
 
+function deadlineReminders(state, from = new Date()) {
+  return visibleNotices(state).filter(notice => {
+    const days = daysUntil(notice.dueDate, from);
+    return notice.type === "assignment" && !state.completedNoticeIds.includes(notice.id) && (days === 0 || days === 1);
+  });
+}
+
+function sortByUrgency(notices, completedIds = [], from = new Date()) {
+  const rank = notice => {
+    if (completedIds.includes(notice.id)) return 6;
+    if (notice.type !== "assignment" || !notice.dueDate) return 5;
+    const days = daysUntil(notice.dueDate, from);
+    return days === 0 ? 0 : days === 1 ? 1 : days < 0 ? 2 : days <= 3 ? 3 : 4;
+  };
+  return sortByDeadline(notices).sort((a, b) => rank(a) - rank(b));
+}
+
 function normalizeSubjectImportance(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   return Object.fromEntries(Object.entries(raw).filter(([subject, value]) =>
@@ -198,7 +215,7 @@ function applySignupProfile(profile, metadata = {}) {
 
 return {
   STORAGE_KEY, CLUBS, clubCheckboxes, dateKey, offsetDate, daysUntil, matchesAudience, audienceIds, schoolGroups, mergeSchoolGroups,
-  sortByDeadline, visibleNotices, createInitialState, restoreState, applySignupProfile, plannerEvents,
+  sortByDeadline, sortByUrgency, deadlineReminders, visibleNotices, createInitialState, restoreState, applySignupProfile, plannerEvents,
   normalizeSubjectImportance, importanceFor, sortByImportance, schoolChangeStatus, schoolChanged, validateSchool,
 };
 })();

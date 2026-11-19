@@ -29,6 +29,21 @@ let refreshTimer = null;
 let refreshing = false;
 let cloudUserId = null;
 let noticeOrder = "deadline";
+let deadlineTimer = null;
+let themeChoice = "system";
+try { const saved = localStorage.getItem("planner-theme"); if (["light", "dark", "system"].includes(saved)) themeChoice = saved; } catch { /* Use the system theme if storage is unavailable. */ }
+const themeMedia = globalThis.matchMedia?.("(prefers-color-scheme: dark)");
+function applyTheme() {
+  if (document.documentElement) document.documentElement.dataset.theme = themeChoice === "system" ? (themeMedia?.matches ? "dark" : "light") : themeChoice;
+}
+applyTheme();
+themeMedia?.addEventListener("change", applyTheme);
+
+function renderDeadlineReminders() {
+  if (mode !== "student") return "";
+  const notices = PlannerModel.deadlineReminders(state);
+  return `<section class="deadline-reminders" aria-label="마감 알림" aria-live="polite"><h2>마감 알림 <span>${notices.length}개</span></h2><p>미완료 과제의 하루 전·당일 알림 · 앱을 열어 둔 동안 자동 확인</p>${notices.length ? `<ul>${notices.map(notice => `<li><button type="button" data-action="detail" data-id="${escapeHtml(notice.id)}"><strong>${daysUntil(notice.dueDate) === 0 ? "오늘 마감" : "내일 마감"}</strong><span>${escapeHtml(notice.subject)} · ${escapeHtml(notice.title)}</span></button></li>`).join("")}</ul>` : `<p>오늘·내일 마감인 미완료 과제가 없습니다.</p>`}</section>`;
+}
 
 function withPersonalImportance(loaded) {
   if (loaded.schemaVersion >= 3) return loaded;
@@ -108,15 +123,36 @@ async function persistCloud(next, message) {
 }
 
 async function refreshCloud(force = false) {
-  if (!cloudStore || cloudSaving || refreshing || activeDialog || (!force && mode === "teacher") || document.hidden) return;
+  if (!cloudStore) { if (force) showToast("로그인한 뒤 새 소식을 확인해 주세요."); return; }
+  if (cloudSaving || refreshing || activeDialog) {
+    if (force) showToast(cloudSaving ? "저장이 끝난 뒤 다시 확인해 주세요." : refreshing ? "새 소식을 확인하고 있습니다." : "열린 창을 닫은 뒤 다시 확인해 주세요.");
+    return;
+  }
+  if ((!force && mode === "teacher") || document.hidden) return;
   refreshing = true;
+  updateRefreshButton();
   const store = cloudStore;
   const previous = state;
   try {
     const loaded = await store.load();
-    if (store === cloudStore && !cloudSaving && state === previous && !activeDialog) { state = withPersonalImportance(loaded); render(); }
+    if (store === cloudStore && !cloudSaving && state === previous && !activeDialog) {
+      const next = withPersonalImportance(loaded);
+      const changed = JSON.stringify(previous) !== JSON.stringify(next);
+      state = next; render();
+      if (force) showToast(changed ? "새 소식을 반영했습니다. 업데이트 완료!" : "확인 완료! 이미 최신 상태입니다.");
+    } else if (force && store === cloudStore) showToast("작업 중인 내용을 보호했습니다. 작업을 마친 뒤 다시 확인해 주세요.");
   } catch (error) { if (store === cloudStore) showToast(error.message); }
-  finally { refreshing = false; }
+  finally { refreshing = false; updateRefreshButton(); }
+}
+
+function updateRefreshButton() {
+  const button = root.querySelector?.('[data-action="cloud-refresh"]');
+  if (!button) return;
+  button.disabled = refreshing;
+  button.setAttribute("aria-busy", String(refreshing));
+  button.setAttribute("aria-label", refreshing ? "새 소식 확인 중" : "새 소식 확인");
+  const label = button.querySelector("span");
+  if (label) label.textContent = refreshing ? "확인 중…" : "새 소식";
 }
 
 globalThis.PlannerApp = {
@@ -135,6 +171,8 @@ globalThis.PlannerApp = {
     cloudUserId = null;
     clearInterval(refreshTimer);
     refreshTimer = null;
+    if (deadlineTimer) window.clearInterval(deadlineTimer);
+    deadlineTimer = null;
     return token;
   },
 };
@@ -169,7 +207,8 @@ function renderTopbar() {
   return `<header class="topbar">
     <div class="topbar-left"><span>학교 플래너</span><span class="term">/ ${roleName}</span></div>
     <div class="topbar-right">
-      ${cloudStore ? `<button type="button" class="icon-button" data-action="cloud-refresh" aria-label="새 소식 확인" title="새 소식 확인">${icon("refresh-cw")}</button>` : ""}
+      <label class="theme-control">테마 <select aria-label="화면 테마" data-theme-choice>${[["system","시스템"],["light","라이트"],["dark","다크"]].map(([value,label]) => `<option value="${value}" ${themeChoice === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+      ${cloudStore ? `<button type="button" class="button refresh-button" data-action="cloud-refresh" aria-label="${refreshing ? "새 소식 확인 중" : "새 소식 확인"}" title="새 소식 확인" aria-busy="${refreshing}" ${refreshing ? "disabled" : ""}>${icon("refresh-cw")}<span>${refreshing ? "확인 중…" : "새 소식"}</span></button>` : ""}
       <span>${mode === "student" ? "학생" : "교사"}</span>
       <button type="button" class="icon-button" data-action="logout" aria-label="로그아웃" title="로그아웃">${icon("log-out")}</button>
       <button type="button" class="icon-button" data-action="profile" aria-label="학생 정보 설정" title="학생 정보 설정">${icon("settings-2")}</button>
@@ -187,7 +226,7 @@ function filteredNotices() {
     if (subjectFilter !== "all" && notice.subject !== subjectFilter) return false;
     return !search || `${notice.title} ${notice.body} ${notice.subject}`.toLowerCase().includes(search.toLowerCase());
   });
-  return noticeOrder === "importance" ? PlannerModel.sortByImportance(notices, state.subjectImportance) : notices;
+  return noticeOrder === "importance" ? PlannerModel.sortByImportance(notices, state.subjectImportance) : noticeOrder === "urgency" ? PlannerModel.sortByUrgency(notices, state.completedNoticeIds) : notices;
 }
 
 function renderNoticeRow(notice) {
@@ -256,7 +295,7 @@ function renderFeed() {
         <div class="filter-row"><div class="tabs" role="group" aria-label="공지 필터">${tabs.map(([id, label]) => `<button type="button" class="tab ${filter === id ? "active" : ""}" data-action="filter" data-filter="${id}" aria-pressed="${filter === id}">${label}</button>`).join("")}</div>
           <div class="filter-tools"><label class="search-box">${icon("search")}<input type="search" data-search placeholder="제목 검색" value="${escapeHtml(search)}" aria-label="공지 검색"></label><select class="plain-select" data-subject-filter aria-label="과목 선택"><option value="all">모든 과목</option>${subjects.map((subject) => `<option value="${escapeHtml(subject)}" ${subjectFilter === subject ? "selected" : ""}>${escapeHtml(subject)}</option>`).join("")}</select></div>
         </div>
-        <div class="notice-sort"><label for="notice-order">정렬</label><select id="notice-order" class="plain-select" data-notice-order><option value="deadline" ${noticeOrder === "deadline" ? "selected" : ""}>마감일순</option><option value="importance" ${noticeOrder === "importance" ? "selected" : ""}>중요도 높은 순</option></select><span class="field-help">높음 <span class="importance-scale" aria-label="5 빨강, 4 주황, 3 노랑, 2 초록, 1 파랑">${[5,4,3,2,1].map(n => `<span class="importance-tag" data-importance="${n}">${n}</span>`).join("")}</span> 낮음</span></div>
+        <div class="notice-sort"><label for="notice-order">정렬</label><select id="notice-order" class="plain-select" data-notice-order><option value="urgency" ${noticeOrder === "urgency" ? "selected" : ""}>마감 우선순위</option><option value="deadline" ${noticeOrder === "deadline" ? "selected" : ""}>마감일순</option><option value="importance" ${noticeOrder === "importance" ? "selected" : ""}>중요도 높은 순</option></select><span class="field-help">높음 <span class="importance-scale" aria-label="5 빨강, 4 주황, 3 노랑, 2 초록, 1 파랑">${[5,4,3,2,1].map(n => `<span class="importance-tag" data-importance="${n}">${n}</span>`).join("")}</span> 낮음</span></div>
         <div class="notice-list">${notices.length ? notices.map(renderNoticeRow).join("") : `<div class="empty-state">${icon("inbox")}<strong>표시할 공지가 없습니다</strong><p>검색어나 필터를 바꿔 보세요.</p></div>`}</div>
       </section>
       <aside class="aside-pane" aria-label="플래너 미리보기">
@@ -360,7 +399,7 @@ function renderDialogs() {
 }
 
 function render() {
-  root.innerHTML = `<div class="app-shell">${renderSidebar()}<div class="main-area">${renderTopbar()}<main class="workspace">${view === "feed" ? renderFeed() : view === "planner" ? renderPlanner() : renderTeacher()}</main></div></div>${renderDialogs()}`;
+  root.innerHTML = `<div class="app-shell">${renderSidebar()}<div class="main-area">${renderTopbar()}<main class="workspace"><div id="deadline-reminder-region">${renderDeadlineReminders()}</div>${view === "feed" ? renderFeed() : view === "planner" ? renderPlanner() : renderTeacher()}</main></div></div>${renderDialogs()}`;
   globalThis.lucide?.createIcons({ attrs: { "stroke-width": 1.8 } });
   if (activeDialog?.type === "detail") root.querySelector("#detail-dialog")?.showModal();
   if (activeDialog?.type === "event") root.querySelector("#event-dialog")?.showModal();
@@ -462,6 +501,12 @@ root.addEventListener("input", (event) => {
 });
 
 root.addEventListener("change", async (event) => {
+  if (event.target.matches("[data-theme-choice]")) {
+    if (!["system", "light", "dark"].includes(event.target.value)) return;
+    themeChoice = event.target.value; applyTheme();
+    try { localStorage.setItem("planner-theme", themeChoice); } catch { showToast("테마는 현재 화면에만 적용됩니다. 브라우저 저장을 허용해 주세요."); }
+    return;
+  }
   if (cloudSaving) return;
   const target = event.target;
   if (target.matches("[data-importance-level]")) { target.closest(".importance-setting").dataset.importance = target.value; return; }
@@ -623,7 +668,13 @@ window.addEventListener("planner-login", (event) => {
   search = "";
   filter = "all";
   subjectFilter = "all";
-  noticeOrder = "deadline";
+  noticeOrder = "urgency";
+  if (deadlineTimer) window.clearInterval(deadlineTimer);
+  deadlineTimer = window.setInterval?.(() => {
+    const region = root.querySelector("#deadline-reminder-region");
+    const html = renderDeadlineReminders();
+    if (region && region.innerHTML !== html) region.innerHTML = html;
+  }, 60000);
   if (cloudState && mode === "student" && !state.profile.grade && !state.profile.classroom) activeDialog = { type: "profile" };
   render();
 });

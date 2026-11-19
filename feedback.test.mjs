@@ -6,6 +6,38 @@ import model from './model.js';
 import cloud from './cloud.js';
 globalThis.PlannerModel=model;
 
+test('deadline reminders include only own unfinished assignments due today/tomorrow and change at midnight',()=>{
+ const state=model.createInitialState();
+ state.notices=[
+  ['today','2026-11-19','all','assignment'],['tomorrow','2026-11-20','all','assignment'],
+  ['late','2026-11-18','all','assignment'],['later','2026-11-21','all','assignment'],
+  ['other','2026-11-19','unknown','assignment'],['notice','2026-11-19','all','notice'],
+  ['done','2026-11-19','all','assignment'],['undated','','all','assignment'],
+ ].map(([id,dueDate,groupId,type])=>({id,dueDate,groupId,type,createdAt:'2026-11-01'}));
+ state.completedNoticeIds=['done'];
+ assert.deepEqual(model.deadlineReminders(state,new Date(2026,10,19)).map(n=>n.id),['today','tomorrow']);
+ assert.deepEqual(model.deadlineReminders(state,new Date(2026,10,20)).map(n=>n.id),['tomorrow','later']);
+ const ranked=model.sortByUrgency(model.visibleNotices(state),state.completedNoticeIds,new Date(2026,10,19));
+ assert.deepEqual(ranked.slice(0,4).map(n=>n.id),['today','tomorrow','late','later']);
+ assert.equal(ranked.at(-1).id,'done');
+});
+
+test('theme follows system changes only in system mode and restores saved choice',()=>{
+ const handlers={},storage=new Map([['planner-theme','dark']]);
+ const media={matches:false,addEventListener:(event,fn)=>handlers[event]=fn};
+ const element={dataset:{}};
+ const root={addEventListener:(event,fn)=>handlers['root-'+event]=fn};
+ const context=vm.createContext({PlannerModel:model,document:{documentElement:element,querySelector:()=>root},window:{addEventListener(){}},
+  matchMedia:()=>media,localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)}});
+ vm.runInContext(readFileSync(new URL('./app.js',import.meta.url),'utf8'),context);
+ assert.equal(element.dataset.theme,'dark');
+ const choose=value=>handlers['root-change']({target:{value,matches:s=>s==='[data-theme-choice]'}});
+ choose('system'); assert.equal(element.dataset.theme,'light');
+ media.matches=true; handlers.change(); assert.equal(element.dataset.theme,'dark');
+ choose('light'); handlers.change(); assert.equal(element.dataset.theme,'light');
+ assert.equal(storage.get('planner-theme'),'light');
+});
+
 test('importance sorts by personal subject weights, with deadlines breaking ties and default 3',()=>{
  const notices=[
   {id:'a',subject:'수학',dueDate:'2026-11-20',createdAt:'2026-11-01'},
@@ -34,6 +66,24 @@ function fixture() {
   submit:async(id,v,i=[])=>{values=v;inputs=i;await listeners.submit({preventDefault(){},target:{id,querySelectorAll:()=>inputs}});},
   run:code=>vm.runInContext(code,context)};
 }
+
+test('manual refresh reports unchanged, changed and failure; duplicate requests do not run',async()=>{
+ const f=fixture();
+ f.run('cloudStore={load:async()=>structuredClone(state)};');
+ await f.run('refreshCloud(true)');
+ assert.match(f.context.lastToast,/이미 최신 상태/);
+ f.run('cloudStore={load:async()=>({...structuredClone(state),notices:[]})};');
+ await f.run('refreshCloud(true)');
+ assert.match(f.context.lastToast,/업데이트 완료/);
+ assert.equal(f.run('state.notices.length'),0);
+ f.run('cloudStore={load:async()=>{throw new Error("연결 실패")}};');
+ await f.run('refreshCloud(true)');
+ assert.equal(f.context.lastToast,'연결 실패');
+ assert.equal(f.run('refreshing'),false);
+ f.run('refreshing=true;');
+ await f.run('refreshCloud(true)');
+ assert.match(f.context.lastToast,/확인하고 있습니다/);
+});
 
 test('personal importance saves, renders colors in feed/planner, survives reload, and separates accounts',async()=>{
  const f=fixture();
