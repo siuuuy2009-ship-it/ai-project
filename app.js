@@ -30,14 +30,12 @@ let refreshing = false;
 let cloudUserId = null;
 let noticeOrder = "deadline";
 let deadlineTimer = null;
-let themeChoice = "system";
-try { const saved = localStorage.getItem("planner-theme"); if (["light", "dark", "system"].includes(saved)) themeChoice = saved; } catch { /* Use the system theme if storage is unavailable. */ }
-const themeMedia = globalThis.matchMedia?.("(prefers-color-scheme: dark)");
+let themeChoice = "light";
+try { const saved = localStorage.getItem("planner-theme"); if (["light", "dark"].includes(saved)) themeChoice = saved; } catch { /* Use light mode if storage is unavailable. */ }
 function applyTheme() {
-  if (document.documentElement) document.documentElement.dataset.theme = themeChoice === "system" ? (themeMedia?.matches ? "dark" : "light") : themeChoice;
+  if (document.documentElement) document.documentElement.dataset.theme = themeChoice;
 }
 applyTheme();
-themeMedia?.addEventListener("change", applyTheme);
 
 function renderDeadlineReminders() {
   if (mode !== "student") return "";
@@ -207,7 +205,7 @@ function renderTopbar() {
   return `<header class="topbar">
     <div class="topbar-left"><span>학교 플래너</span><span class="term">/ ${roleName}</span></div>
     <div class="topbar-right">
-      <label class="theme-control">테마 <select aria-label="화면 테마" data-theme-choice>${[["system","시스템"],["light","라이트"],["dark","다크"]].map(([value,label]) => `<option value="${value}" ${themeChoice === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+      <label class="theme-control">테마 <select aria-label="화면 테마" data-theme-choice>${[["light","라이트"],["dark","다크"]].map(([value,label]) => `<option value="${value}" ${themeChoice === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
       ${cloudStore ? `<button type="button" class="button refresh-button" data-action="cloud-refresh" aria-label="${refreshing ? "새 소식 확인 중" : "새 소식 확인"}" title="새 소식 확인" aria-busy="${refreshing}" ${refreshing ? "disabled" : ""}>${icon("refresh-cw")}<span>${refreshing ? "확인 중…" : "새 소식"}</span></button>` : ""}
       <span>${mode === "student" ? "학생" : "교사"}</span>
       <button type="button" class="icon-button" data-action="logout" aria-label="로그아웃" title="로그아웃">${icon("log-out")}</button>
@@ -502,7 +500,7 @@ root.addEventListener("input", (event) => {
 
 root.addEventListener("change", async (event) => {
   if (event.target.matches("[data-theme-choice]")) {
-    if (!["system", "light", "dark"].includes(event.target.value)) return;
+    if (!["light", "dark"].includes(event.target.value)) return;
     themeChoice = event.target.value; applyTheme();
     try { localStorage.setItem("planner-theme", themeChoice); } catch { showToast("테마는 현재 화면에만 적용됩니다. 브라우저 저장을 허용해 주세요."); }
     return;

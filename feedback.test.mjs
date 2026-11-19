@@ -22,7 +22,7 @@ test('deadline reminders include only own unfinished assignments due today/tomor
  assert.equal(ranked.at(-1).id,'done');
 });
 
-test('theme follows system changes only in system mode and restores saved choice',()=>{
+test('theme restores dark, saves light and ignores removed system option',()=>{
  const handlers={},storage=new Map([['planner-theme','dark']]);
  const media={matches:false,addEventListener:(event,fn)=>handlers[event]=fn};
  const element={dataset:{}};
@@ -32,9 +32,9 @@ test('theme follows system changes only in system mode and restores saved choice
  vm.runInContext(readFileSync(new URL('./app.js',import.meta.url),'utf8'),context);
  assert.equal(element.dataset.theme,'dark');
  const choose=value=>handlers['root-change']({target:{value,matches:s=>s==='[data-theme-choice]'}});
- choose('system'); assert.equal(element.dataset.theme,'light');
- media.matches=true; handlers.change(); assert.equal(element.dataset.theme,'dark');
- choose('light'); handlers.change(); assert.equal(element.dataset.theme,'light');
+ choose('system'); assert.equal(element.dataset.theme,'dark');
+ assert.equal(handlers.change,undefined);
+ choose('light'); assert.equal(element.dataset.theme,'light');
  assert.equal(storage.get('planner-theme'),'light');
 });
 
